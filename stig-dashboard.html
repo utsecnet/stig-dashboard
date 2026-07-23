@@ -1646,9 +1646,10 @@
         stig: params.presetStig ? new Set([params.presetStig]) : new Set(),
         acr: params.presetAcrBand ? new Set([params.presetAcrBand]) : new Set(),
         aes: params.presetAES ? new Set([params.presetAES]) : new Set(),
-        os: params.presetOS ? new Set([params.presetOS]) : new Set()
+        os: params.presetOS ? new Set([params.presetOS]) : new Set(),
+        openState: new Set(), // STIGs blade: Has Open / Fully Closed, filtered via the Open column header
+        version: new Set() // STIGs blade: filtered via the Version column header
       },
-      filterStatus: "all", // still used by the STIGs blade's Has Open / Fully Closed chips
       activeVulnId: null,
       page: 1,
       pageSize: 20, // findings tables only — "all" shows every matching row
@@ -1762,10 +1763,18 @@
     });
   }
 
+  // Collapses a STIG group's open/not-reviewed counts into the three states
+  // the Open column's Excel-style filter offers.
+  function stigOpenState(x){
+    if(x.open > 0) return "hasOpen";
+    if(x.nr > 0) return "reviewPending";
+    return "fullyClosed";
+  }
+
   function filterStigRows(rows, state){
     let r = rows;
-    if(state.filterStatus === "hasOpen") r = r.filter(x=>x.open>0);
-    else if(state.filterStatus === "fullyClosed") r = r.filter(x=>x.open===0 && x.nr===0);
+    if(state.colFilters.openState && state.colFilters.openState.size) r = r.filter(x=>state.colFilters.openState.has(stigOpenState(x)));
+    if(state.colFilters.version && state.colFilters.version.size) r = r.filter(x=>state.colFilters.version.has(x.stigVersion||"—"));
     if(state.search){
       const t = state.search.toLowerCase();
       r = r.filter(x=> (x.stigTitle||"").toLowerCase().includes(t) || Array.from(x.hostNames).some(h=>(h||"").toLowerCase().includes(t)) || (x.stigVersion||"").toLowerCase().includes(t));
@@ -1794,11 +1803,6 @@
   function stigsControlsHtml(bladeId, state, defs){
     return `<div class="controls">
       <input class="search-input" data-blade-id="${bladeId}" data-action="search" type="text" placeholder="Search STIG title, host, version..." value="${esc(state.search)}">
-      <div class="filter-group">
-        <div class="chip ${state.filterStatus==='all'?'on':''}" data-blade-id="${bladeId}" data-action="set-filter" data-kind="filterStatus" data-v="all">All</div>
-        <div class="chip ${state.filterStatus==='hasOpen'?'on':''}" data-blade-id="${bladeId}" data-action="set-filter" data-kind="filterStatus" data-v="hasOpen">Has Open</div>
-        <div class="chip ${state.filterStatus==='fullyClosed'?'on':''}" data-blade-id="${bladeId}" data-action="set-filter" data-kind="filterStatus" data-v="fullyClosed">Fully Closed</div>
-      </div>
       ${colPickerHtml("stigs", defs, bladeId, state)}
     </div>`;
   }
@@ -1942,7 +1946,13 @@
     const defs = STIG_COLS;
     const vis = getVisibleCols("stigs", defs);
     const visibleDefs = defs.filter(d=>vis.has(d.key));
-    const header = visibleDefs.map(d=> `<th data-blade-id="${blade.id}" data-action="sort" data-key="${d.key}">${esc(d.label)}${sortIcon(blade.state,d.key)}</th>`).join("");
+    const OPEN_FILTER_OPTIONS = [["hasOpen","Has Open"],["reviewPending","Pending Review"],["fullyClosed","Fully Closed"]];
+    const VERSION_FILTER_OPTIONS = Array.from(new Set(allGroups.map(r=>r.stigVersion||"—"))).sort((a,b)=>a.localeCompare(b)).map(v=>[v,v]);
+    const header = visibleDefs.map(d=>{
+      if(d.key === "open") return thCellHtml(blade, "open", d.label, {filterKey:"openState", filterOptions:OPEN_FILTER_OPTIONS});
+      if(d.key === "version") return thCellHtml(blade, "version", d.label, {filterKey:"version", filterOptions:VERSION_FILTER_OPTIONS});
+      return `<th data-blade-id="${blade.id}" data-action="sort" data-key="${d.key}">${esc(d.label)}${sortIcon(blade.state,d.key)}</th>`;
+    }).join("");
     const bodyRows = rows.length===0 ? `<tr class="empty-row"><td colspan="${Math.max(1,visibleDefs.length)}">no STIGs match the current filters</td></tr>` :
       rows.map(r=>{
         const cells = visibleDefs.map(d=>{
