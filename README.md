@@ -15,9 +15,17 @@ If you've worked with **Nessus / ACAS**, the risk model here will feel familiar:
 
 [`sample checklists/`](sample%20checklists) holds a set of example `.ckl` / `.cklb` files covering common device types you'd actually see in a DoD environment — switches, an ESXi host, RHEL 9 web servers, a domain controller, a workstation, a database server, a perimeter firewall, a printer, and more — so you can load a realistic, varied mix into the dashboard without needing real scan data.
 
-At the repo root, `IT-RJOHNSON-LAP_COMBINED_20260722-172034.cklb` is a sample multi-STIG checklist for a single laptop asset (`it-rjohnson-lap`), and `acr override.csv` is a sample ACR overrides file that matches its hostname.
-
 Drop any combination of `.ckl` / `.cklb` files at once — the dashboard accepts both formats interchangeably, and a single file containing multiple STIGs (multiple `iSTIG` blocks in a CKL, or multiple entries under `stigs` in a CKLB) is split into one dashboard "asset" entry per STIG.
+
+### Regenerating / adding sample checklists
+
+[`tools/generate-sample-checklists.ps1`](tools/generate-sample-checklists.ps1) is the PowerShell script that produced the files in `sample checklists/`. It builds synthetic but structurally valid CKLB checklists from a library of reusable STIG "profiles" (title + a handful of rule topics/severities) — each host instance picks one or more profiles and gets a randomized-but-varied mix of Open / NotAFinding / Not Reviewed / Not Applicable findings. Run it with:
+
+```
+pwsh ./tools/generate-sample-checklists.ps1
+```
+
+Re-running it overwrites the existing sample files. To add more sample assets, add a `New-Asset` call at the bottom of the script (reusing an existing profile) or define a new profile and reference it — see the script's header comment for details.
 
 ## How the CSV ties in
 
