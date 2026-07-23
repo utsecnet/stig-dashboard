@@ -13,12 +13,9 @@ If you've worked with **Nessus / ACAS**, the risk model here will feel familiar:
 
 ## The sample files in this repo
 
-| File | Format | Purpose |
-|---|---|---|
-| `ubuntu.ckl` | DISA STIG Viewer CKL (XML) | Sample single-STIG checklist for a Canonical Ubuntu 20.04 host |
-| `k8s-worker.ckl` | DISA STIG Viewer CKL (XML) | Sample checklist for a Kubernetes worker node |
-| `IT-RJOHNSON-LAP_COMBINED_20260722-172034.cklb` | CKLB (JSON, STIG Viewer 3 / STIG Manager export) | Sample multi-STIG checklist combined for a single laptop asset (`it-rjohnson-lap`) |
-| `acr override.csv` | CSV | Sample Asset Criticality Rating (ACR) overrides |
+[`sample checklists/`](sample%20checklists) holds a set of example `.ckl` / `.cklb` files covering common device types you'd actually see in a DoD environment — switches, an ESXi host, RHEL 9 web servers, a domain controller, a workstation, a database server, a perimeter firewall, a printer, and more — so you can load a realistic, varied mix into the dashboard without needing real scan data.
+
+At the repo root, `IT-RJOHNSON-LAP_COMBINED_20260722-172034.cklb` is a sample multi-STIG checklist for a single laptop asset (`it-rjohnson-lap`), and `acr override.csv` is a sample ACR overrides file that matches its hostname.
 
 Drop any combination of `.ckl` / `.cklb` files at once — the dashboard accepts both formats interchangeably, and a single file containing multiple STIGs (multiple `iSTIG` blocks in a CKL, or multiple entries under `stigs` in a CKLB) is split into one dashboard "asset" entry per STIG.
 
