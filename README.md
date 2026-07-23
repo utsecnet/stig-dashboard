@@ -1,6 +1,8 @@
 # STIG Dashboard
 
-A single-file, offline dashboard for browsing DISA STIG checklist results. Open [stig-dashboard.html](stig-dashboard.html) directly in a browser — everything runs client-side in that tab; no server, no network calls, no data upload.
+A single-file, offline dashboard for browsing and prioritizing DISA STIG checklist results — the same `.ckl` / `.cklb` output produced by **Evaluate-STIG**. Open [stig-dashboard.html](stig-dashboard.html) directly in a browser — everything runs client-side in that tab; no server, no network calls, no data upload.
+
+If you've worked with **Nessus / ACAS**, the risk model here will feel familiar: Nessus doesn't just report a vulnerability's raw CVSS severity, it factors in the criticality of the asset it lives on (via VPR/asset criticality weighting) to tell you what to actually fix first. This dashboard applies that same idea to STIG findings — instead of leaving every CAT I/II/III finding weighted purely by its checklist severity, it combines each finding's severity with an **Asset Criticality Rating (ACR)** for the host it's on to produce a per-finding **criticality** and a per-asset **Asset Exposure Score (AES)**, so you can triage a pile of STIG results the way you'd triage a Nessus scan by risk score instead of eyeballing raw severity counts.
 
 ## Quick start
 
@@ -33,9 +35,9 @@ it-rjohnson-lap, 5
 - `acr` is an integer 1–10.
 - Upload it via **↑ ACR Overrides (CSV)** (found in the Assets view) *after* loading the checklist files it references — unmatched hostnames and invalid values are reported back after upload.
 
-ACR (auto-inferred from asset role/hostname/STIG signals, or overridden by the CSV) combines with each finding's severity to drive:
-- The **ACR × CAT criticality matrix** (Low/Medium/High/Critical per finding)
-- The **AES (Asset Exposure Score)**, 0–1000, per asset
+ACR (auto-inferred from asset role/hostname/STIG signals, or overridden by the CSV) combines with each finding's severity — same principle as Nessus weighting a CVSS score by asset criticality — to drive:
+- The **ACR × CAT criticality matrix**: CAT I/II/III severity + ACR band → Low/Medium/High/Critical per finding
+- The **AES (Asset Exposure Score)**, 0–1000 per asset: ACR combined with the severity-weighted exposure of that asset's Open/Not Reviewed findings — the STIG-world equivalent of a Nessus risk score, used to rank *assets* rather than individual findings
 
 ## Other features
 
