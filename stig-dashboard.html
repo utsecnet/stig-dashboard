@@ -382,6 +382,28 @@
   .empty-row td{text-align:center;color:var(--dim);padding:36px;font-family:var(--mono);font-size:11.5px;white-space:normal;}
   .count-note{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin:10px 2px 0;}
 
+  /* ===== Pagination bar (findings tables) ===== */
+  .pagination-bar{
+    display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+    margin:10px 2px 0;font-family:var(--mono);font-size:10.5px;color:var(--dim);
+  }
+  .pagination-info{white-space:nowrap;}
+  .pagination-pages{display:flex;align-items:center;gap:4px;flex-wrap:wrap;}
+  .page-btn{
+    font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--panel-raised);
+    border:1px solid var(--hairline-bright);border-radius:4px;padding:4px 9px;cursor:pointer;min-width:28px;text-align:center;
+  }
+  .page-btn:hover:not(:disabled){color:var(--text);border-color:var(--dim);}
+  .page-btn.active{background:var(--naf);border-color:transparent;color:var(--void);font-weight:700;cursor:default;}
+  .page-btn:disabled{opacity:.35;cursor:default;}
+  .page-btn.page-nav{padding:4px 8px;}
+  .page-ellipsis{color:var(--dim);padding:0 2px;}
+  .pagination-size{display:flex;align-items:center;gap:6px;color:var(--dim);white-space:nowrap;}
+  .pagination-size select{
+    font-family:var(--mono);font-size:11px;color:var(--text);background:var(--panel-raised);
+    border:1px solid var(--hairline-bright);border-radius:4px;padding:4px 6px;cursor:pointer;
+  }
+
   /* ===== Finding detail blade ===== */
   .fd-tags{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;}
   .fd-body h4{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:18px 0 5px;}
@@ -516,6 +538,21 @@
     return "Not_Reviewed";
   }
 
+  // Severity is normalized the same way status is, so every vuln is
+  // guaranteed to land in one of the three CAT buckets the rest of the
+  // dashboard understands (donuts, matrix, sort ranks, badges). Without
+  // this, an occasional non-standard value (e.g. "none"/CAT IV informational
+  // items some tools emit) would silently vanish from CAT-grouped totals
+  // instead of showing up somewhere — counts would stop reconciling.
+  function normalizeSeverity(raw){
+    const s = (raw||"").toString().trim().toLowerCase().replace(/[\s_-]+/g,"_");
+    if(s === "") return "medium"; // matches the prior default when the field is absent entirely
+    if(s === "high" || s === "cat_i" || s === "i") return "high";
+    if(s === "medium" || s === "cat_ii" || s === "ii") return "medium";
+    if(s === "low" || s === "cat_iii" || s === "iii") return "low";
+    return "low"; // unrecognized non-blank value (e.g. "none"/CAT IV) — least severe bucket rather than dropped
+  }
+
   // one CKL file can contain multiple <iSTIG> blocks (multiple STIGs applied to one asset) —
   // emit one dashboard "asset" entry per iSTIG so each STIG can be browsed independently.
   function parseCKL(xmlText, filename){
@@ -559,7 +596,7 @@
           ruleId: attr(v,"Rule_ID"),
           ruleVer: attr(v,"Rule_Ver"),
           ruleTitle: attr(v,"Rule_Title") || "(untitled rule)",
-          severity: (attr(v,"Severity") || "medium").toLowerCase(),
+          severity: normalizeSeverity(attr(v,"Severity")),
           groupTitle: attr(v,"Group_Title"),
           discussion: attr(v,"Vuln_Discuss"),
           checkContent: attr(v,"Check_Content"),
@@ -612,7 +649,7 @@
           ruleId: r.rule_id || "",
           ruleVer: r.rule_version || r.rule_id || "",
           ruleTitle: r.rule_title || r.group_title || "(untitled rule)",
-          severity: (r.severity || "medium").toLowerCase(),
+          severity: normalizeSeverity(r.severity),
           groupTitle: r.group_title || r.group_id || "",
           discussion: r.discussion || r.vuln_discuss || "",
           checkContent: typeof check === "object" && check ? (check.content||"") : (check||""),
@@ -1022,7 +1059,7 @@
 
   function complianceBarsHtml(vulns){
     const {bySev, stats} = computeStats(vulns);
-    const overallClosed = vulns.length ? Math.round(((stats.NotAFinding+stats.Not_Applicable)/vulns.length)*100) : 0;
+    const overallClosed = vulns.length ? Math.round(((stats.NotAFinding+stats.Not_Applicable)/vulns.length)*100) : 100;
     return `
       <div class="compliance-block">
         <div class="head"><h3>Compliance by Category</h3><span class="overall">${overallClosed}% closed overall · ${vulns.length} rules</span></div>
@@ -1240,19 +1277,8 @@
     </div>`;
   }
 
-  // ==================================================================
-  // Donut charts — generic renderer + data builders for: Assets by
-  // Operating System (Assets tab), Findings by CAT / Criticality / STIG
-  // (Findings tab).
-  // ==================================================================
-
   const DONUT_PALETTE = ["#4ea8de","#35c77e","#f0a93b","#e5484d","#7a1620","#d9be4a","#e08a3c","#9b7bd8","#8196a3","#526270"];
 
-  // Builds the data-action="drill" attribute string for a donut slice/legend
-  // row, reusing the exact same blade-opening mechanism as every other
-  // clickable tile/cell in the dashboard. Returns "" (not clickable) when
-  // bladeIndex is unavailable or the slice has no meaningful single-value
-  // filter (e.g. the STIG donut's aggregated "Other" bucket).
   function donutDrillAttrs(bladeIndex, type, title, presetObj){
     if(bladeIndex === null || bladeIndex === undefined) return "";
     let attrs = `data-action="drill" data-blade-index="${bladeIndex}" data-type="${esc(type)}" data-title="${esc(title)}"`;
@@ -1478,6 +1504,54 @@
       </div>`;
   }
 
+  // ===== Findings table pagination (row limit + page selector) =====
+  const PAGE_SIZE_OPTIONS = [10, 20, 50, 100, "all"];
+
+  // Builds a compact page-number sequence around the current page, e.g.
+  // [1, "…", 6, 7, 8, "…", 42] — always keeps first/last reachable.
+  function pageNumberList(page, totalPages){
+    const keep = new Set([1, totalPages, page-1, page, page+1].filter(n=>n>=1 && n<=totalPages));
+    const arr = Array.from(keep).sort((a,b)=>a-b);
+    const out = [];
+    let prev = 0;
+    arr.forEach(n=>{
+      if(prev && n-prev>1) out.push("…");
+      out.push(n);
+      prev = n;
+    });
+    return out;
+  }
+
+  function paginationBarHtml(blade, total, page, pageSize, totalPages, startIdx, endIdx){
+    const bladeId = blade.id;
+    const atFirst = page<=1, atLast = page>=totalPages;
+    const pageBtns = pageNumberList(page, totalPages).map(p => p==="…"
+      ? `<span class="page-ellipsis">…</span>`
+      : `<button type="button" class="page-btn ${p===page?'active':''}" data-action="page-goto" data-blade-id="${bladeId}" data-page="${p}" ${p===page?'disabled':''}>${p}</button>`
+    ).join("");
+    return `
+      <div class="pagination-bar">
+        <div class="pagination-info">${total===0 ? "0 rules" : `Showing ${startIdx+1}–${endIdx} of ${total} rules`}</div>
+        <div class="pagination-pages">
+          <button type="button" class="page-btn page-nav" data-action="page-first" data-blade-id="${bladeId}" ${atFirst?"disabled":""} title="First page">&laquo;</button>
+          <button type="button" class="page-btn page-nav" data-action="page-prev" data-blade-id="${bladeId}" ${atFirst?"disabled":""} title="Previous page">&lsaquo;</button>
+          ${pageBtns}
+          <button type="button" class="page-btn page-nav" data-action="page-next" data-blade-id="${bladeId}" ${atLast?"disabled":""} title="Next page">&rsaquo;</button>
+          <button type="button" class="page-btn page-nav" data-action="page-last" data-blade-id="${bladeId}" ${atLast?"disabled":""} title="Last page">&raquo;</button>
+        </div>
+        <label class="pagination-size">Rows
+          <select data-action="page-size" data-blade-id="${bladeId}">
+            ${PAGE_SIZE_OPTIONS.map(opt=>{
+              const val = opt==="all" ? "all" : opt;
+              const label = opt==="all" ? `All (${total})` : opt;
+              const selected = pageSize===opt || (pageSize==="all" && opt==="all");
+              return `<option value="${val}" ${selected?"selected":""}>${label}</option>`;
+            }).join("")}
+          </select>
+        </label>
+      </div>`;
+  }
+
   const FINDING_FILTER_OPTIONS = {
     status: [["Open","Open"],["Not_Reviewed","Not Reviewed"],["NotAFinding","Not a Finding"],["Not_Applicable","Not Applicable"]],
     sev: [["high","CAT I"],["medium","CAT II"],["low","CAT III"]],
@@ -1512,9 +1586,21 @@
       const filterKey = FILTERABLE[d.key] ? d.key : null;
       return thCellHtml(blade, d.key, d.label, {filterKey, filterOptions: filterKey ? FILTERABLE[filterKey] : null});
     }).join("");
-    const rowsHtml = vulns.length === 0
+
+    // ---- Pagination: slice the already-filtered/sorted vulns to one page ----
+    const total = vulns.length;
+    const pageSize = blade.state.pageSize === "all" ? "all" : (blade.state.pageSize || 20);
+    const totalPages = pageSize === "all" ? 1 : Math.max(1, Math.ceil(total / pageSize));
+    if(blade.state.page > totalPages) blade.state.page = totalPages;
+    if(blade.state.page < 1) blade.state.page = 1;
+    const page = blade.state.page;
+    const startIdx = pageSize === "all" ? 0 : (page - 1) * pageSize;
+    const endIdx = pageSize === "all" ? total : Math.min(total, startIdx + pageSize);
+    const pageVulns = pageSize === "all" ? vulns : vulns.slice(startIdx, endIdx);
+
+    const rowsHtml = total === 0
       ? `<tr class="empty-row"><td colspan="${Math.max(1,visibleDefs.length)}">no findings match the current filters</td></tr>`
-      : vulns.map(v=>{
+      : pageVulns.map(v=>{
           const active = activeId === v.id;
           const cells = visibleDefs.map(d=>{
             switch(d.key){
@@ -1538,7 +1624,7 @@
           <tbody>${rowsHtml}</tbody>
         </table>
       </div>
-      <div class="count-note">showing ${vulns.length} rules</div>`;
+      ${paginationBarHtml(blade, total, page, pageSize, totalPages, startIdx, endIdx)}`;
   }
 
   // ---- Blade factory / navigation ----
@@ -1564,6 +1650,8 @@
       },
       filterStatus: "all", // still used by the STIGs blade's Has Open / Fully Closed chips
       activeVulnId: null,
+      page: 1,
+      pageSize: 20, // findings tables only — "all" shows every matching row
       dashboardTab: "assets"
     };
     return {id:"blade"+bladeSeq, type, title, params, state};
@@ -1641,11 +1729,37 @@
     </div>`;
   }
 
-  function buildStigRow(a){
-    const {stats} = computeStats(a.vulns);
-    const total = a.vulns.length;
-    const compliance = total ? Math.round(((stats.NotAFinding+stats.Not_Applicable)/total)*100) : 100;
-    return {asset:a, total, open:stats.Open, nr:stats.Not_Reviewed, naf:stats.NotAFinding, na:stats.Not_Applicable, compliance};
+  // Groups the raw per-file/per-host asset entries into one row per unique
+  // STIG title (falling back to filename when a STIG has no declared title),
+  // aggregating rule counts across every host that STIG was applied to.
+  function buildStigGroups(){
+    const map = new Map();
+    assets.forEach(a=>{
+      const key = a.stigTitle || a.fileName;
+      if(!map.has(key)){
+        map.set(key, {
+          key,
+          stigTitle: a.stigTitle,
+          fileName: a.fileName,
+          stigVersion: a.stigVersion,
+          releaseInfo: a.releaseInfo,
+          hostNames: new Set(),
+          total: 0, open: 0, nr: 0, naf: 0, na: 0
+        });
+      }
+      const g = map.get(key);
+      g.hostNames.add(a.hostName || a.fileName);
+      const {stats} = computeStats(a.vulns);
+      g.total += a.vulns.length;
+      g.open += stats.Open;
+      g.nr += stats.Not_Reviewed;
+      g.naf += stats.NotAFinding;
+      g.na += stats.Not_Applicable;
+    });
+    return Array.from(map.values()).map(g=>{
+      const compliance = g.total ? Math.round(((g.naf+g.na)/g.total)*100) : 100;
+      return Object.assign(g, {hostCount: g.hostNames.size, compliance});
+    });
   }
 
   function filterStigRows(rows, state){
@@ -1654,7 +1768,7 @@
     else if(state.filterStatus === "fullyClosed") r = r.filter(x=>x.open===0 && x.nr===0);
     if(state.search){
       const t = state.search.toLowerCase();
-      r = r.filter(x=> (x.asset.stigTitle||"").toLowerCase().includes(t) || (x.asset.hostName||"").toLowerCase().includes(t) || (x.asset.stigVersion||"").toLowerCase().includes(t));
+      r = r.filter(x=> (x.stigTitle||"").toLowerCase().includes(t) || Array.from(x.hostNames).some(h=>(h||"").toLowerCase().includes(t)) || (x.stigVersion||"").toLowerCase().includes(t));
     }
     return r;
   }
@@ -1663,10 +1777,10 @@
     const dir = state.sortDir;
     rows.sort((a,b)=>{
       switch(state.sortKey){
-        case "title": return (a.asset.stigTitle||"").localeCompare(b.asset.stigTitle||"")*dir;
+        case "title": return (a.stigTitle||"").localeCompare(b.stigTitle||"")*dir;
         case "hostCount": return ((a.hostCount||0)-(b.hostCount||0))*dir;
-        case "version": return (a.asset.stigVersion||"").localeCompare(b.asset.stigVersion||"")*dir;
-        case "release": return (a.asset.releaseInfo||"").localeCompare(b.asset.releaseInfo||"")*dir;
+        case "version": return (a.stigVersion||"").localeCompare(b.stigVersion||"")*dir;
+        case "release": return (a.releaseInfo||"").localeCompare(b.releaseInfo||"")*dir;
         case "total": return (a.total-b.total)*dir;
         case "open": return (a.open-b.open)*dir;
         case "notReviewed": return (a.nr-b.nr)*dir;
@@ -1690,42 +1804,46 @@
   }
 
   // ---- Blade content renderers ----
+  // Only the currently-visible tab's markup is built — both tabs involve
+  // several donut/matrix/gauge computations over every host and finding, so
+  // building the hidden one too would double the render cost for no benefit
+  // (it gets discarded the moment the user switches tabs, which re-renders
+  // the blade from scratch anyway via refreshBlade).
   function renderDashboard(blade, bladeIndex){
     const allVulns = [];
     assets.forEach(a => a.vulns.forEach(v => allVulns.push(v)));
     const hosts = groupAssetsByHost();
     const rows = hosts.map(buildAssetRow);
     lastDashboardRows = rows;
-    const {stats} = computeStats(allVulns);
     const activeTab = blade.state.dashboardTab || "assets";
 
-    const assetsTabHtml = `
+    const tabHtml = activeTab === "findings" ? (()=>{
+      const {stats} = computeStats(allVulns);
+      return `
+        <div style="margin-top:12px;">${dashboardTilesHtml(bladeIndex, stats)}</div>
+        <div class="donut-row">
+          ${donutPanelHtml("by CAT", "Total findings (any status) grouped by STIG severity category.", catDonutEntries(bladeIndex, allVulns), "FINDINGS", "no findings loaded yet")}
+          ${donutPanelHtml("by Criticality", "Open findings grouped by criticality — the same ACR × CAT criticality used in the matrix above.", criticalityDonutEntries(bladeIndex, hosts), "OPEN", "no open findings")}
+          ${donutPanelHtml("by STIG", "Total findings (any status) grouped by STIG. The top 7 STIGs are broken out; the rest are grouped under Other.", stigDonutEntries(bladeIndex, hosts), "FINDINGS", "no findings loaded yet")}
+        </div>
+        ${complianceBarsHtml(allVulns)}
+        <div class="matrix-row">
+          ${acrCatMatrixHtml(bladeIndex, hosts)}
+          ${critSummaryHtml(bladeIndex, hosts)}
+        </div>`;
+    })() : `
       <div class="ces-row" style="margin-top:12px;">
         ${cesPanelHtml(rows)}
         ${donutPanelHtml("Assets by Operating System", "Each asset's OS is inferred from the most OS-defining STIG title loaded for it. Assets with no recognizable OS-defining STIG are grouped under Other / Unspecified.", osDonutEntries(bladeIndex, hosts), "ASSETS", "no assets loaded yet")}
       </div>
       ${rows.length ? `<div class="scatter-row">${scatterPanelHtml(rows)}${aesCountBlockHtml(bladeIndex, rows)}</div>` : ""}`;
 
-    const findingsTabHtml = `
-      <div style="margin-top:12px;">${dashboardTilesHtml(bladeIndex, stats)}</div>
-      <div class="donut-row">
-        ${donutPanelHtml("by CAT", "Total findings (any status) grouped by STIG severity category.", catDonutEntries(bladeIndex, allVulns), "FINDINGS", "no findings loaded yet")}
-        ${donutPanelHtml("by Criticality", "Open findings grouped by criticality — the same ACR × CAT criticality used in the matrix above.", criticalityDonutEntries(bladeIndex, hosts), "OPEN", "no open findings")}
-        ${donutPanelHtml("by STIG", "Total findings (any status) grouped by STIG. The top 7 STIGs are broken out; the rest are grouped under Other.", stigDonutEntries(bladeIndex, hosts), "FINDINGS", "no findings loaded yet")}
-      </div>
-      ${complianceBarsHtml(allVulns)}
-      <div class="matrix-row">
-        ${acrCatMatrixHtml(bladeIndex, hosts)}
-        ${critSummaryHtml(bladeIndex, hosts)}
-      </div>`;
-
     return `
       <div class="dash-tabs">
         <div class="dash-tab ${activeTab==="assets"?"active":""}" data-action="dash-tab" data-blade-id="${blade.id}" data-tab="assets">Assets (${hosts.length})</div>
         <div class="dash-tab ${activeTab==="findings"?"active":""}" data-action="dash-tab" data-blade-id="${blade.id}" data-tab="findings">Findings (${allVulns.length})</div>
       </div>
-      <div class="dash-tab-panel" ${activeTab==="assets"?"":"style=\"display:none;\""}>${assetsTabHtml}</div>
-      <div class="dash-tab-panel" ${activeTab==="findings"?"":"style=\"display:none;\""}>${findingsTabHtml}</div>`;
+      <div class="dash-tab-panel">${tabHtml}</div>`;
   }
 
   function renderAssetsList(blade, bladeIndex){
@@ -1818,14 +1936,8 @@
 
   function renderStigsList(blade, bladeIndex){
     if(!assets.length) return `<div class="empty-note">no STIG files loaded yet</div>`;
-    const hostCountMap = new Map();
-    assets.forEach(a=>{
-      const key = a.stigTitle || a.fileName;
-      if(!hostCountMap.has(key)) hostCountMap.set(key, new Set());
-      hostCountMap.get(key).add(a.hostName || a.fileName);
-    });
-    let rows = assets.map(a => Object.assign(buildStigRow(a), {hostCount: hostCountMap.get(a.stigTitle||a.fileName).size}));
-    rows = filterStigRows(rows, blade.state);
+    const allGroups = buildStigGroups();
+    let rows = filterStigRows(allGroups, blade.state);
     rows = sortStigRows(rows, blade.state);
     const defs = STIG_COLS;
     const vis = getVisibleCols("stigs", defs);
@@ -1833,13 +1945,12 @@
     const header = visibleDefs.map(d=> `<th data-blade-id="${blade.id}" data-action="sort" data-key="${d.key}">${esc(d.label)}${sortIcon(blade.state,d.key)}</th>`).join("");
     const bodyRows = rows.length===0 ? `<tr class="empty-row"><td colspan="${Math.max(1,visibleDefs.length)}">no STIGs match the current filters</td></tr>` :
       rows.map(r=>{
-        const a = r.asset;
         const cells = visibleDefs.map(d=>{
           switch(d.key){
-            case "title": return `<td class="title">${esc(a.stigTitle||"Untitled STIG")}</td>`;
-            case "hostCount": return `<td title="${esc(Array.from(hostCountMap.get(a.stigTitle||a.fileName)).join(', '))}">${r.hostCount}</td>`;
-            case "version": return `<td class="src">${esc(a.stigVersion||"—")}</td>`;
-            case "release": return `<td class="src">${esc(a.releaseInfo||"—")}</td>`;
+            case "title": return `<td class="title">${esc(r.stigTitle||"Untitled STIG")}</td>`;
+            case "hostCount": return `<td title="${esc(Array.from(r.hostNames).join(', '))}">${r.hostCount}</td>`;
+            case "version": return `<td class="src">${esc(r.stigVersion||"—")}</td>`;
+            case "release": return `<td class="src">${esc(r.releaseInfo||"—")}</td>`;
             case "total": return `<td>${r.total}</td>`;
             case "open": return `<td><span class="status-pill Open">${r.open}</span></td>`;
             case "notReviewed": return `<td><span class="status-pill Not_Reviewed">${r.nr}</span></td>`;
@@ -1847,12 +1958,12 @@
             default: return `<td></td>`;
           }
         }).join("");
-        return `<tr data-action="drill" data-blade-index="${bladeIndex}" data-type="stigDetail" data-title="${esc(a.stigTitle||a.fileName)}" data-stig-key="${esc(a.stigTitle||a.fileName)}">${cells}</tr>`;
+        return `<tr data-action="drill" data-blade-index="${bladeIndex}" data-type="stigDetail" data-title="${esc(r.stigTitle||r.fileName)}" data-stig-key="${esc(r.key)}">${cells}</tr>`;
       }).join("");
     return `
       ${stigsControlsHtml(blade.id, blade.state, defs)}
       <div class="tablewrap"><table><thead><tr>${header}</tr></thead><tbody>${bodyRows}</tbody></table></div>
-      <div class="count-note">showing ${rows.length} of ${assets.length} STIGs</div>`;
+      <div class="count-note">showing ${rows.length} of ${allGroups.length} STIGs</div>`;
   }
 
   function renderStigDetail(blade, bladeIndex){
@@ -1874,6 +1985,7 @@
     const defs = FINDING_COLS;
     const first = matches[0];
     const hostCount = new Set(matches.map(a=>a.hostName||a.fileName)).size;
+    const sourceOptions = Array.from(new Set(vulns.map(v=>v._sourceLabel).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
     return `
       <div class="blade-meta">
         <span>Version: <b>${esc(first.stigVersion||"—")}</b>${first.releaseInfo ? " ("+esc(first.releaseInfo)+")" : ""}</span>
@@ -1882,16 +1994,26 @@
       </div>
       <div style="margin-top:16px;">${complianceBlockHtml(vulns)}</div>
       ${controlsHtml(blade.id, blade.state, defs, "findings")}
-      ${findingsTableHtml(blade, filtered, true, undefined, "Assets", false)}`;
+      ${findingsTableHtml(blade, filtered, true, sourceOptions, "Assets")}`;
   }
 
   function renderFindingsList(blade, bladeIndex){
     const hostsMap = new Map(groupAssetsByHost().map(h=>[h.hostKey, h]));
+    // A host with N applied STIGs appears N times in `assets` — cache each
+    // host's ACR once instead of recomputing inferAutoACR (which rescans
+    // that host's STIG titles) on every one of its per-STIG entries.
+    const acrValueCache = new Map();
+    const acrValueFor = hostKey => {
+      if(acrValueCache.has(hostKey)) return acrValueCache.get(hostKey);
+      const hostRec = hostsMap.get(hostKey);
+      const val = hostRec ? getACR(hostKey, hostRec).value : 5;
+      acrValueCache.set(hostKey, val);
+      return val;
+    };
     const vulns = [];
     assets.forEach(a=>{
       const hostKey = a.hostName || a.fileName;
-      const hostRec = hostsMap.get(hostKey);
-      const acrVal = hostRec ? getACR(hostKey, hostRec).value : 5;
+      const acrVal = acrValueFor(hostKey);
       a.vulns.forEach(v=> vulns.push(Object.assign({}, v, {
         _sourceLabel:(a.hostName||a.fileName), _sourceAssetId:a.id,
         _stigLabel:(a.stigTitle||a.fileName),
@@ -1906,7 +2028,7 @@
 
     return `
       <div class="blade-meta"><span>Total rules: <b>${vulns.length}</b></span></div>
-      <div style="margin-top:6px;">${complianceBlockHtml(filtered)}</div>
+      <div style="margin-top:6px;">${complianceBlockHtml(vulns)}</div>
       ${controlsHtml(blade.id, blade.state, defs, "findings")}
       ${findingsTableHtml(blade, filtered, true, sourceOptions, undefined, undefined, stigOptions)}`;
   }
@@ -2052,7 +2174,7 @@
     if(!hasAssets) return;
 
     $("#railCountAssets").textContent = groupAssetsByHost().length;
-    $("#railCountStigs").textContent = assets.length;
+    $("#railCountStigs").textContent = buildStigGroups().length;
     $("#railCountFindings").textContent = allVulnsCount;
 
     const rootMenu = bladeStack.length ? bladeStack[0].__menu : null;
@@ -2203,7 +2325,6 @@
   });
   window.addEventListener("scroll", hideTooltip, true);
   window.addEventListener("resize", hideTooltip);
-  window.addEventListener("resize", resizeScatterCharts);
 
   let colMenuState = null; // {menuEl, btnEl, bladeId, prefKey}
   function closeColMenu(){
@@ -2314,7 +2435,7 @@
       const clearEl = e.target.closest('[data-action="clear-col-filter"]');
       if(clearEl && !clearEl.classList.contains("disabled")){
         const b = bladeStack.find(x=>x.id===bladeId);
-        if(b){ b.state.colFilters[filterKey].clear(); refreshBlade(b.id); }
+        if(b){ b.state.colFilters[filterKey].clear(); b.state.page = 1; refreshBlade(b.id); }
         closeColFilterMenu();
       }
     });
@@ -2329,6 +2450,7 @@
       if(set.size === 0){ allValues.forEach(v=>set.add(v)); }
       if(set.has(value)) set.delete(value); else set.add(value);
       if(set.size === allValues.length) set.clear();
+      b.state.page = 1;
       refreshBlade(b.id);
       const newBtn = document.querySelector(`[data-blade-id="${bladeId}"] [data-action="col-filter-toggle"][data-filter-key="${filterKey}"]`);
       if(newBtn && colFilterState){
@@ -2348,6 +2470,7 @@
   document.addEventListener("keydown", e=>{ if(e.key === "Escape") closeColFilterMenu(); });
   window.addEventListener("resize", closeColFilterMenu);
   bladeScroll.addEventListener("scroll", closeColFilterMenu, true);
+  window.addEventListener("resize", resizeScatterCharts);
 
   bladeScroll.addEventListener("click", e=>{
     const colBtn = e.target.closest('[data-action="colpicker-toggle"]');
@@ -2433,6 +2556,37 @@
       return;
     }
 
+    const pageFirstEl = e.target.closest('[data-action="page-first"]');
+    if(pageFirstEl){
+      const blade = bladeStack.find(b=>b.id===pageFirstEl.dataset.bladeId);
+      if(blade){ blade.state.page = 1; refreshBlade(blade.id); }
+      return;
+    }
+    const pagePrevEl = e.target.closest('[data-action="page-prev"]');
+    if(pagePrevEl){
+      const blade = bladeStack.find(b=>b.id===pagePrevEl.dataset.bladeId);
+      if(blade){ blade.state.page = Math.max(1, (blade.state.page||1) - 1); refreshBlade(blade.id); }
+      return;
+    }
+    const pageNextEl = e.target.closest('[data-action="page-next"]');
+    if(pageNextEl){
+      const blade = bladeStack.find(b=>b.id===pageNextEl.dataset.bladeId);
+      if(blade){ blade.state.page = (blade.state.page||1) + 1; refreshBlade(blade.id); }
+      return;
+    }
+    const pageLastEl = e.target.closest('[data-action="page-last"]');
+    if(pageLastEl){
+      const blade = bladeStack.find(b=>b.id===pageLastEl.dataset.bladeId);
+      if(blade){ blade.state.page = Infinity; refreshBlade(blade.id); } // clamped to totalPages inside findingsTableHtml
+      return;
+    }
+    const pageGotoEl = e.target.closest('[data-action="page-goto"]');
+    if(pageGotoEl){
+      const blade = bladeStack.find(b=>b.id===pageGotoEl.dataset.bladeId);
+      if(blade){ blade.state.page = parseInt(pageGotoEl.dataset.page,10) || 1; refreshBlade(blade.id); }
+      return;
+    }
+
     const exportEl = e.target.closest('[data-action="export"]');
     if(exportEl){
       const blade = bladeStack.find(b=>b.id===exportEl.dataset.bladeId);
@@ -2451,6 +2605,18 @@
   });
 
   bladeScroll.addEventListener("change", e=>{
+    const pageSizeSel = e.target.closest('[data-action="page-size"]');
+    if(pageSizeSel){
+      const blade = bladeStack.find(b=>b.id===pageSizeSel.dataset.bladeId);
+      if(blade){
+        const v = pageSizeSel.value;
+        blade.state.pageSize = v === "all" ? "all" : (parseInt(v,10) || 20);
+        blade.state.page = 1;
+        refreshBlade(blade.id);
+      }
+      return;
+    }
+
     const acrSel = e.target.closest('[data-action="set-acr-override"]');
     if(acrSel){
       const hostKey = acrSel.dataset.hostkey;
@@ -2470,6 +2636,7 @@
     const blade = bladeStack.find(b=>b.id===el.dataset.bladeId);
     if(!blade) return;
     blade.state.search = el.value;
+    blade.state.page = 1;
     refreshBlade(blade.id);
     const fresh = document.querySelector(`[data-blade-id="${blade.id}"] [data-action="search"]`);
     if(fresh){ fresh.focus(); fresh.selectionStart = fresh.selectionEnd = fresh.value.length; }
