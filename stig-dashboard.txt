@@ -1,0 +1,2428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CKL Dashboard</title>
+<style>
+  :root{
+    --void:#0a0f13;
+    --panel:#111a20;
+    --panel-raised:#16222a;
+    --hairline:#233039;
+    --hairline-bright:#324450;
+    --text:#e7edf0;
+    --muted:#8196a3;
+    --dim:#526270;
+    --open:#e5484d;
+    --open-dim:#5a2427;
+    --naf:#35c77e;
+    --naf-dim:#1c4432;
+    --nr:#f0a93b;
+    --nr-dim:#4a3719;
+    --na:#5b6b76;
+    --na-dim:#2a3439;
+    --cat1:#e5484d;
+    --cat2:#e08a3c;
+    --cat3:#d9be4a;
+    --accent-blue:#4ea8de;
+    --crit-l:#d9be4a; --crit-l-text:#1a1005;
+    --crit-m:#e08a3c; --crit-m-text:#1a1005;
+    --crit-h:#e5484d; --crit-h-text:#000000;
+    --crit-c:#7a1620; --crit-c-text:#ffffff;
+    --mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;height:100vh;display:flex;flex-direction:column;overflow:hidden;
+    background: radial-gradient(ellipse 1200px 600px at 50% -10%, #132029 0%, var(--void) 55%);
+    color:var(--text);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:#2c4a57;color:#fff;}
+
+  /* ===== Themed scrollbars (req 6) — subtle color tint, not high-contrast ===== */
+  *{scrollbar-width:thin; scrollbar-color: rgba(78,168,222,.4) var(--panel);}
+  *::-webkit-scrollbar{width:11px;height:11px;}
+  *::-webkit-scrollbar-track{background:var(--panel);}
+  *::-webkit-scrollbar-corner{background:var(--panel);}
+  *::-webkit-scrollbar-thumb{background:rgba(78,168,222,.4);border-radius:6px;border:2px solid var(--panel);}
+  *::-webkit-scrollbar-thumb:hover{background:rgba(78,168,222,.75);}
+
+  /* ===== Top ledger bar ===== */
+  .ledger{
+    display:flex;align-items:center;gap:14px;flex:none;
+    padding:10px 20px;
+    border-bottom:1px solid var(--hairline);
+    background:linear-gradient(180deg, #101a20 0%, #0d161b 100%);
+    font-family:var(--mono);font-size:12.5px;color:var(--muted);
+    flex-wrap:wrap;
+  }
+  .ledger .prompt{color:var(--naf);}
+  .ledger .sep{color:var(--dim);}
+  .ledger .brand{
+    color:var(--text);font-weight:600;letter-spacing:.04em;margin-right:auto;
+    display:flex;align-items:center;gap:8px;
+  }
+  .brand .dot{width:7px;height:7px;border-radius:50%;background:var(--naf);box-shadow:0 0 8px var(--naf);animation:pulse 2.4s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+  .ledger button{
+    font-family:var(--mono);font-size:11.5px;color:var(--muted);
+    background:var(--panel-raised);border:1px solid var(--hairline-bright);
+    padding:6px 11px;border-radius:3px;cursor:pointer;letter-spacing:.03em;
+  }
+  .ledger button:hover{color:var(--text);border-color:var(--dim);}
+  .ledger input[type=file]{display:none;}
+
+  /* ===== Empty / dropzone state ===== */
+  .empty-stage{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:40px 20px;min-height:0;
+  }
+  .dropzone{
+    width:min(640px, 90vw);
+    border:1px dashed var(--hairline-bright);border-radius:6px;
+    padding:56px 40px;background:var(--panel);
+    transition:border-color .15s, background .15s;cursor:pointer;
+  }
+  .dropzone.drag{border-color:var(--naf);background:var(--panel-raised);}
+  .dropzone .glyph{font-family:var(--mono);color:var(--naf);font-size:13px;margin-bottom:18px;display:inline-block;}
+  .dropzone .cursor{display:inline-block;width:7px;height:15px;background:var(--naf);margin-left:2px;animation:pulse 1.1s step-end infinite;vertical-align:middle;}
+  .dropzone h1{font-family:var(--mono);font-size:19px;font-weight:600;margin:0 0 10px;letter-spacing:-.01em;}
+  .dropzone p{color:var(--muted);font-size:13.5px;line-height:1.6;margin:0 0 22px;}
+  .dropzone .pick{
+    font-family:var(--mono);font-size:12px;color:var(--void);background:var(--naf);
+    border:none;padding:9px 18px;border-radius:3px;cursor:pointer;font-weight:600;letter-spacing:.02em;
+  }
+  .dropzone .hint{margin-top:18px;font-family:var(--mono);font-size:10.5px;color:var(--dim);letter-spacing:.03em;}
+
+  /* ===== Portal shell: rail + horizontally scrolling blades ===== */
+  .portal{flex:1;display:flex;min-height:0;}
+  .rail{
+    width:176px;flex:none;background:#0d151a;border-right:1px solid var(--hairline);
+    padding:16px 0 0;overflow-y:auto;display:flex;flex-direction:column;
+  }
+  .rail-nav{flex:1;}
+  .rail-item{
+    padding:11px 20px;font-family:var(--mono);font-size:12px;letter-spacing:.05em;
+    color:var(--muted);cursor:pointer;border-left:2px solid transparent;
+    display:flex;align-items:center;gap:10px;
+  }
+  .rail-item .glyph{color:var(--dim);font-size:13px;width:14px;text-align:center;}
+  .rail-item:hover{background:var(--panel);color:var(--text);}
+  .rail-item.active{border-left-color:var(--naf);background:var(--panel);color:var(--text);}
+  .rail-item.active .glyph{color:var(--naf);}
+  .rail-version{border-top:1px solid var(--hairline);color:var(--dim);font-size:10.5px;}
+  .rail-version .glyph{font-size:12px;}
+  .rail-count{margin-left:auto;color:var(--dim);font-size:10.5px;}
+
+  .blade-scroll{
+    flex:1;display:flex;overflow-x:auto;overflow-y:hidden;min-width:0;
+    scroll-behavior:smooth;
+  }
+  .blade{
+    flex:none;height:100%;overflow-y:auto;overflow-x:hidden;
+    border-right:1px solid var(--hairline);background:var(--panel);
+    animation:slideIn .16s ease-out;
+  }
+  @keyframes slideIn{from{transform:translateX(-14px);opacity:0;}to{transform:translateX(0);opacity:1;}}
+  .blade-w-md{width:460px;}
+  .blade-w-lg{width:820px;}
+  .blade-w-auto{width:max-content;min-width:460px;max-width:min(90vw,1200px);}
+  .blade-header{
+    position:sticky;top:0;z-index:5;background:var(--panel);
+    padding:12px 18px 10px;border-bottom:1px solid var(--hairline);
+  }
+  .blade-header .bh-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+  .blade-header .eyebrow{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.12em;text-transform:uppercase;margin-bottom:5px;}
+  .blade-header h2{font-size:16.5px;margin:0;font-weight:650;letter-spacing:-.01em;line-height:1.35;}
+  .blade-close{
+    flex:none;background:none;border:none;color:var(--dim);cursor:pointer;
+    font-size:18px;line-height:1;padding:2px 4px;font-family:var(--mono);
+  }
+  .blade-close:hover{color:var(--text);}
+  .blade-meta{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:6px;}
+  .blade-meta b{color:var(--text);font-weight:600;}
+  .blade-body{padding:14px 18px 22px;}
+  .dash-widgets-bar{display:flex;justify-content:flex-end;margin-bottom:8px;}
+
+  .empty-note{font-family:var(--mono);font-size:11.5px;color:var(--dim);padding:20px 4px;line-height:1.7;}
+
+  /* ===== Summary tiles ===== */
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:0 0 12px;}
+  .tile{background:var(--panel-raised);border:1px solid var(--hairline);border-radius:6px;padding:9px 12px;position:relative;overflow:hidden;}
+  .tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;}
+  .tile.open::before{background:var(--open);} .tile.naf::before{background:var(--naf);}
+  .tile.nr::before{background:var(--nr);} .tile.na::before{background:var(--na);}
+  .tile.assetsTile::before{background:var(--accent-blue);}
+  .tile.assetsTile .n{color:var(--accent-blue);}
+  .tile.aesTile.crit-lb::before{background:var(--crit-l);} .tile.aesTile.crit-lb .n{color:var(--crit-l);}
+  .tile.aesTile.crit-mb::before{background:var(--crit-m);} .tile.aesTile.crit-mb .n{color:var(--crit-m);}
+  .tile.aesTile.crit-hb::before{background:var(--crit-h);} .tile.aesTile.crit-hb .n{color:var(--crit-h);}
+  .tile.aesTile.crit-cb::before{background:var(--crit-c);} .tile.aesTile.crit-cb .n{color:var(--crit-c);}
+  .tile .n{font-family:var(--mono);font-size:20px;font-weight:700;letter-spacing:-.02em;}
+  .tile.open .n{color:var(--open);} .tile.naf .n{color:var(--naf);}
+  .tile.nr .n{color:var(--nr);} .tile.na .n{color:var(--na);}
+  .tile .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-top:2px;}
+  .tile[data-action]{cursor:pointer;transition:transform .1s ease, border-color .1s ease;}
+  .tile[data-action]:hover{border-color:var(--hairline-bright);transform:translateY(-1px);}
+  .tile[data-action]:active{transform:translateY(0);}
+
+  /* ===== AES tile group ===== */
+  .aes-tiles-wrap{margin-bottom:12px;}
+  .ces-panel{background:var(--panel-raised);border:1px solid var(--hairline);border-radius:6px;padding:16px;margin-bottom:18px;}
+  .ces-panel .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;flex-wrap:wrap;gap:6px;}
+  .ces-panel .head h3{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0;font-weight:600;}
+  .ces-panel .head .overall{font-family:var(--mono);font-size:11px;color:var(--dim);}
+  .ces-gauge-wrap{display:flex;justify-content:center;margin-top:4px;}
+  .ces-gauge-svg{width:100%;max-width:360px;height:auto;}
+  .scatter-panel{background:var(--panel-raised);border:1px solid var(--hairline);border-radius:6px;padding:16px;margin-bottom:18px;}
+  .scatter-panel .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;flex-wrap:wrap;gap:6px;}
+  .scatter-panel .head h3{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0;font-weight:600;}
+  .scatter-panel .head .overall{font-family:var(--mono);font-size:11px;color:var(--dim);}
+  .scatter-wrap{margin-top:6px;}
+  .scatter-svg{width:100%;height:auto;max-height:340px;}
+  .pareto-svg{width:100%;height:auto;max-height:340px;}
+  .scatter-svg g[data-action="drill"],
+  .pareto-svg g[data-action="drill"]{cursor:pointer;}
+  .scatter-svg g[data-action="drill"]:hover .dot-fill,
+  .pareto-svg g[data-action="drill"]:hover .bar-fill{filter:brightness(1.25);}
+  .aes-tiles-wrap .tiles{margin-bottom:0;}
+
+  /* ===== Compliance bars ===== */
+  .compliance-block{background:var(--panel-raised);border:1px solid var(--hairline);border-radius:6px;padding:12px 14px 10px;margin-bottom:12px;}
+  .compliance-block .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;flex-wrap:wrap;gap:6px;}
+  .compliance-block .head h3{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0;font-weight:600;}
+  .compliance-block .head .overall{font-family:var(--mono);font-size:11px;color:var(--dim);}
+  .cat-row{display:flex;align-items:center;gap:10px;margin-bottom:7px;}
+  .cat-row:last-child{margin-bottom:0;}
+  .cat-tag{font-family:var(--mono);font-size:10.5px;font-weight:700;width:52px;flex:none;padding:3px 0;text-align:center;border-radius:3px;}
+  .cat-tag.c1{color:var(--cat1);border:1px solid var(--cat1);}
+  .cat-tag.c2{color:var(--cat2);border:1px solid var(--cat2);}
+  .cat-tag.c3{color:var(--cat3);border:1px solid var(--cat3);}
+  .meter{flex:1;height:14px;border-radius:2px;overflow:hidden;display:flex;background:var(--hairline);}
+  .meter .seg{height:100%;}
+  .meter .seg.open{background:var(--open);} .meter .seg.naf{background:var(--naf);}
+  .meter .seg.nr{background:var(--nr);} .meter .seg.na{background:var(--na-dim);}
+  .cat-pct{font-family:var(--mono);font-size:11px;width:44px;text-align:right;flex:none;color:var(--muted);}
+  .legend{display:flex;gap:14px;margin-top:8px;padding-top:8px;border-top:1px solid var(--hairline);flex-wrap:wrap;}
+  .legend span{font-family:var(--mono);font-size:10px;color:var(--muted);display:flex;align-items:center;gap:5px;}
+  .legend i{width:8px;height:8px;border-radius:2px;display:inline-block;}
+  .legend i.open{background:var(--open);} .legend i.naf{background:var(--naf);}
+  .legend i.nr{background:var(--nr);} .legend i.na{background:var(--na-dim);}
+  .legend i.crit-l{background:var(--crit-l);} .legend i.crit-m{background:var(--crit-m);}
+  .legend i.crit-h{background:var(--crit-h);} .legend i.crit-c{background:var(--crit-c);}
+
+  /* ===== ACR x CAT matrix ===== */
+  .matrix-row{display:flex;gap:16px;align-items:stretch;margin-bottom:12px;}
+  .matrix-row > .matrix-block{flex:1;min-width:0;margin-bottom:0;display:flex;flex-direction:column;justify-content:space-between;}
+  .matrix-row > .crit-summary-block{flex:0 0 150px;margin-bottom:0;display:flex;flex-direction:column;}
+  .matrix-block{background:var(--panel-raised);border:1px solid var(--hairline);border-radius:6px;padding:12px 14px;margin-bottom:12px;}
+  .matrix-block .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;flex-wrap:wrap;gap:6px;}
+  .matrix-block .head h3{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0;font-weight:600;}
+  .matrix-block .head .overall{font-family:var(--mono);font-size:11px;color:var(--dim);}
+  .matrix-table{width:100%;border-collapse:collapse;margin-top:8px;}
+  .matrix-table th, .matrix-table td{padding:7px 10px;text-align:center;font-family:var(--mono);font-size:12.5px;border:1px solid var(--hairline);}
+  .matrix-table th{background:var(--panel);color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:600;}
+  .matrix-table td.acr-row-label{color:var(--text);font-weight:700;background:var(--panel);}
+  .matrix-cell{cursor:pointer;font-weight:800;transition:filter .1s;}
+  .matrix-cell:hover{filter:brightness(1.18);}
+  .matrix-count{font-size:16px;font-weight:800;line-height:1.1;}
+
+  /* ===== Criticality badges / summary ===== */
+  .crit-l{background:var(--crit-l);color:var(--crit-l-text);}
+  .crit-m{background:var(--crit-m);color:var(--crit-m-text);}
+  .crit-h{background:var(--crit-h);color:var(--crit-h-text);}
+  .crit-c{background:var(--crit-c);color:var(--crit-c-text);}
+  .crit-badge{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:800;padding:2px 7px;border-radius:4px;letter-spacing:.02em;}
+  .crit-summary-block{background:var(--panel-raised);border:1px solid var(--hairline);border-radius:6px;padding:12px 14px;margin-bottom:12px;}
+  .crit-summary-block .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;flex-wrap:wrap;gap:6px;}
+  .crit-summary-block .head h3{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0;font-weight:600;}
+  .crit-summary-block .head .overall{font-family:var(--mono);font-size:11px;color:var(--dim);}
+  .crit-tiles{display:flex;flex-direction:column;gap:6px;margin-top:8px;flex:1;}
+  .crit-tile{border-radius:6px;padding:8px 12px;cursor:pointer;text-align:center;transition:transform .1s;flex:1;display:flex;flex-direction:column;justify-content:center;}
+  .crit-tile:hover{transform:translateY(-1px);}
+  .crit-tile .n{font-family:var(--mono);font-size:18px;font-weight:800;}
+  .crit-tile .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.07em;margin-top:2px;opacity:.85;}
+
+  /* ===== ACR / AES score badges (asset detail) ===== */
+  .asset-score-row{display:flex;gap:22px;margin-bottom:16px;flex-wrap:wrap;}
+  .score-block{display:flex;flex-direction:column;gap:6px;}
+  .score-label{font-family:var(--mono);font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;}
+  .acr-badge{display:inline-block;font-family:var(--mono);font-weight:800;font-size:15px;padding:4px 11px;border-radius:5px;background:var(--panel-raised);border:1px solid var(--hairline-bright);color:var(--text);width:fit-content;}
+  .aes-badge{display:inline-block;font-family:var(--mono);font-weight:800;font-size:15px;padding:4px 11px;border-radius:5px;width:fit-content;}
+  .acr-override{margin-top:2px;background:var(--panel-raised);border:1px solid var(--hairline-bright);color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 7px;border-radius:4px;}
+
+  /* ===== Tooltips (used for AES / ACR explanations) =====
+     Rendered as a JS-positioned overlay appended to <body> — see
+     showTooltip()/hideTooltip() — so they are never clipped by a
+     blade's own overflow:auto/hidden. */
+  .tooltip{cursor:help;}
+  .floating-tooltip{
+    position:fixed;z-index:999;pointer-events:none;
+    background:#0d161b;border:1px solid var(--hairline-bright);color:var(--text);
+    padding:9px 11px;border-radius:5px;font-size:11px;font-family:var(--sans);font-weight:400;
+    max-width:260px;line-height:1.55;box-shadow:0 8px 22px rgba(0,0,0,.55);white-space:normal;
+  }
+
+  /* ===== Column picker =====
+     The trigger lives inside the blade; the menu itself is a JS-positioned
+     overlay appended to <body> (see openColMenuFor()) so it is never
+     clipped by the blade's overflow either. */
+  .colpicker-btn{
+    font-family:var(--mono);font-size:11px;color:var(--muted);cursor:pointer;flex:none;
+    background:var(--panel-raised);border:1px solid var(--hairline-bright);padding:7px 12px;border-radius:4px;user-select:none;
+  }
+  .colpicker-btn:hover, .colpicker-btn.open{color:var(--text);border-color:var(--dim);}
+  .floating-colmenu{
+    position:fixed;z-index:999;background:var(--panel-raised);border:1px solid var(--hairline-bright);
+    border-radius:6px;padding:8px;min-width:190px;box-shadow:0 10px 28px rgba(0,0,0,.5);max-height:280px;overflow-y:auto;
+  }
+  .colpicker-item{display:flex;align-items:center;gap:8px;padding:5px 6px;font-family:var(--sans);font-size:12px;color:var(--text);cursor:pointer;border-radius:4px;}
+  .colpicker-item:hover{background:var(--panel);}
+  .colpicker-item input{accent-color:var(--naf);}
+  .colpicker-item input:disabled{opacity:.5;}
+  .colfilter-clear{padding:6px 8px;font-family:var(--sans);font-size:11.5px;color:var(--naf);cursor:pointer;border-radius:4px;}
+  .colfilter-clear:hover{background:var(--panel);}
+  .colfilter-clear.disabled{color:var(--dim);cursor:default;pointer-events:none;}
+  .colpicker-divider{height:1px;background:var(--hairline);margin:6px 2px;}
+
+  /* ===== Controls / chips ===== */
+  .controls{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;}
+  .search-input{
+    flex:1;min-width:160px;background:var(--panel-raised);border:1px solid var(--hairline);border-radius:4px;
+    padding:7px 11px;color:var(--text);font-size:12.5px;font-family:var(--sans);
+  }
+  .search-input::placeholder{color:var(--dim);}
+  .search-input:focus{outline:none;border-color:var(--hairline-bright);}
+  .export-btn{
+    font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--panel-raised);
+    border:1px solid var(--hairline-bright);padding:7px 12px;border-radius:4px;cursor:pointer;
+  }
+  .export-btn:hover{color:var(--text);}
+
+  /* ===== Data tables (assets / stigs / findings) ===== */
+  .tablewrap{border:1px solid var(--hairline);border-radius:6px;overflow:auto;}
+  table{width:100%;border-collapse:collapse;font-size:12.3px;}
+  thead th{
+    text-align:left;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--dim);padding:9px 11px;border-bottom:1px solid var(--hairline);cursor:default;
+    background:var(--panel-raised);white-space:nowrap;position:sticky;top:0;
+  }
+  .th-inner{display:flex;align-items:center;justify-content:space-between;gap:6px;}
+  .th-label{cursor:pointer;display:inline-flex;align-items:center;}
+  .th-label:hover{color:var(--muted);}
+  thead th[data-action="sort"]{cursor:pointer;}
+  thead th[data-action="sort"]:hover{color:var(--muted);}
+  .col-filter-btn{
+    flex:none;background:none;border:none;color:var(--dim);cursor:pointer;
+    font-size:9px;padding:2px 5px;border-radius:3px;line-height:1;
+  }
+  .col-filter-btn:hover{color:var(--text);background:var(--panel);}
+  .col-filter-btn.active{color:var(--naf);}
+  .col-filter-btn.open{color:var(--text);background:var(--panel);}
+  tbody tr{border-bottom:1px solid var(--hairline);cursor:pointer;}
+  tbody tr:hover{background:var(--panel-raised);}
+  tbody tr:last-child{border-bottom:none;}
+  tbody tr.active-row{background:var(--panel-raised);box-shadow:inset 2px 0 0 var(--naf);}
+  td{padding:9px 11px;vertical-align:top;white-space:nowrap;}
+  td.title{white-space:normal;}
+  td.id{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;}
+  td.sev{white-space:nowrap;}
+  .sev-tag{font-family:var(--mono);font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;}
+  .sev-tag.c1{color:var(--cat1);border:1px solid var(--cat1);}
+  .sev-tag.c2{color:var(--cat2);border:1px solid var(--cat2);}
+  .sev-tag.c3{color:var(--cat3);border:1px solid var(--cat3);}
+  .status-pill{font-family:var(--mono);font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;white-space:nowrap;display:inline-block;}
+  .status-pill.Open{background:var(--open-dim);color:var(--open);}
+  .status-pill.NotAFinding{background:var(--naf-dim);color:var(--naf);}
+  .status-pill.Not_Reviewed{background:var(--nr-dim);color:var(--nr);}
+  .status-pill.Not_Applicable{background:var(--na-dim);color:var(--na);}
+  td.title{color:var(--text);}
+  td.src{font-family:var(--mono);font-size:10.5px;color:var(--muted);}
+  .empty-row td{text-align:center;color:var(--dim);padding:36px;font-family:var(--mono);font-size:11.5px;white-space:normal;}
+  .count-note{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin:10px 2px 0;}
+
+  /* ===== Finding detail blade ===== */
+  .fd-tags{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;}
+  .fd-body h4{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:18px 0 5px;}
+  .fd-body h4:first-child{margin-top:4px;}
+  .fd-body pre{white-space:pre-wrap;font-family:var(--sans);margin:0;color:var(--muted);font-size:12.5px;line-height:1.65;}
+  .fd-body .comments{color:var(--nr);}
+  .changelog-notes{margin:16px 0 0;padding-left:18px;color:var(--muted);font-size:13px;line-height:1.8;}
+  .changelog-notes li{margin-bottom:4px;}
+
+  /* ===== Import blade ===== */
+  .import-remove{
+    flex:none;background:none;border:1px solid var(--hairline-bright);color:var(--muted);
+    border-radius:4px;padding:4px 9px;cursor:pointer;font-family:var(--mono);font-size:13px;
+    display:inline-flex;align-items:center;justify-content:center;line-height:1;
+  }
+  .import-remove:hover{color:var(--open);border-color:var(--open);}
+  .import-add{
+    width:100%;margin:0 0 4px;padding:12px;border:1px dashed var(--hairline-bright);border-radius:6px;
+    background:none;color:var(--muted);font-family:var(--mono);font-size:12px;cursor:pointer;
+  }
+  .import-add:hover{border-color:var(--naf);color:var(--text);}
+  tbody tr.no-click{cursor:default;}
+  tbody tr.no-click:hover{background:none;}
+  .import-table{white-space:nowrap;}
+  .import-table th, .import-table td{white-space:nowrap;vertical-align:middle;}
+  .import-table th:nth-child(4), .import-table td:nth-child(4){text-align:center;}
+  .import-table th:nth-child(5), .import-table td:nth-child(5){text-align:center;}
+
+  /* ===== Sort indicator ===== */
+  .sort-ico{margin-left:5px;font-size:9px;opacity:.35;display:inline-block;}
+  .sort-ico.active{opacity:1;color:var(--naf);}
+
+  @media (max-width:900px){
+    .blade-w-lg{width:min(94vw,820px);}
+    .blade-w-md{width:min(85vw,460px);}
+    .blade-w-auto{min-width:min(90vw,460px);max-width:94vw;}
+    .rail{width:64px;}
+    .rail-item span.label-text{display:none;}
+    .rail-count{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<div class="ledger">
+  <div class="brand"><span class="dot"></span> CKL DASHBOARD <span class="sep">/</span> offline STIG results viewer</div>
+  <span id="ledgerStatus"><span class="prompt">$</span> awaiting file<span class="cursor-inline">_</span></span>
+  <button id="addMoreBtn" style="display:none;">+ add file</button>
+  <input type="file" id="fileInput" accept=".ckl,.cklb,.xml" multiple>
+  <input type="file" id="acrCsvInput" accept=".csv" style="display:none;">
+</div>
+
+<div class="empty-stage" id="emptyStage">
+  <div class="dropzone" id="dropzone">
+    <div class="glyph">&gt; drop_target.ckl / .cklb<span class="cursor"></span></div>
+    <h1>Drop CKL/CKLB files to build the dashboard</h1>
+    <p>Runs entirely in this browser tab — nothing is uploaded anywhere.<br>
+       Accepts <code>.ckl</code> and <code>.cklb</code> checklist files. Drop every applicable STIG for a device at once, then browse by asset, STIG, or finding.</p>
+    <button class="pick" id="pickBtn">Choose file(s)</button>
+    <div class="hint">NO NETWORK REQUIRED · NO DATA LEAVES THIS TAB</div>
+  </div>
+</div>
+
+<div class="portal" id="portal" style="display:none;">
+  <div class="rail" id="rail">
+    <div class="rail-nav">
+      <div class="rail-item" data-menu="dashboard"><span class="glyph">&raquo;</span><span class="label-text">Dashboard</span></div>
+      <div class="rail-item" data-menu="assets"><span class="glyph">&#9635;</span><span class="label-text">Assets</span><span class="rail-count" id="railCountAssets"></span></div>
+      <div class="rail-item" data-menu="stigs"><span class="glyph">&#9636;</span><span class="label-text">STIGs</span><span class="rail-count" id="railCountStigs"></span></div>
+      <div class="rail-item" data-menu="findings"><span class="glyph">&#9673;</span><span class="label-text">Findings</span><span class="rail-count" id="railCountFindings"></span></div>
+      <div class="rail-item" data-menu="import"><span class="glyph">+</span><span class="label-text">Import</span></div>
+    </div>
+    <div class="rail-item rail-version" data-menu="changelog"><span class="glyph">ⓘ</span><span class="label-text">v1.0</span></div>
+  </div>
+  <div class="blade-scroll" id="bladeScroll"></div>
+</div>
+
+
+<script>
+(function(){
+  "use strict";
+
+  const STATUS_LABEL = {Open:"Open", Not_Reviewed:"Not Reviewed", NotAFinding:"Not a Finding", Not_Applicable:"Not Applicable"};
+  const SEV_LABEL = {high:"CAT I", medium:"CAT II", low:"CAT III"};
+  const SEV_CLASS = {high:"c1", medium:"c2", low:"c3"};
+  const MENU_TITLE = {dashboard:"Dashboard", assets:"Assets", stigs:"STIGs", findings:"Findings", import:"Import", changelog:"Change Log"};
+
+  function formatToday(){
+    const d = new Date();
+    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+  }
+  const CHANGELOG = [
+    {version:"1.0", date: formatToday(), notes:"Initial release"}
+  ];
+
+  let assets = []; // {id, fileName, hostName, hostIp, stigTitle, stigVersion, releaseInfo, vulns:[...]}
+  let bladeStack = [];
+  let bladeSeq = 0;
+  const acrOverrides = new Map(); // hostKey -> integer 1-10
+
+  const $ = (sel, root) => (root||document).querySelector(sel);
+  const $$ = (sel, root) => Array.from((root||document).querySelectorAll(sel));
+
+  function esc(s){
+    return (s||"").toString().replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  // Builds a name->value lookup from a VULN's STIG_DATA children in a single
+  // pass. Equivalent to calling the old per-attribute attr() helper once for
+  // each of the ~10 fields we need, but does one scan instead of ten —
+  // matters on STIGs with hundreds of rules. Keeps first-match-wins
+  // semantics (an attribute name appearing more than once keeps its first
+  // occurrence), same as the original linear-scan version.
+  function buildAttrMap(vulnEl){
+    const map = new Map();
+    vulnEl.querySelectorAll("STIG_DATA").forEach(n=>{
+      const key = n.querySelector("VULN_ATTRIBUTE");
+      if(!key) return;
+      const name = key.textContent.trim();
+      if(map.has(name)) return;
+      const val = n.querySelector("ATTRIBUTE_DATA");
+      map.set(name, val ? val.textContent.trim() : "");
+    });
+    return map;
+  }
+
+  function textOf(root, tag){
+    const el = root.querySelector(tag);
+    return el ? el.textContent.trim() : "";
+  }
+
+  function normalizeStatus(raw){
+    const s = (raw||"").toString().trim().toLowerCase().replace(/[\s-]+/g,"_");
+    if(s === "open") return "Open";
+    if(s === "not_a_finding" || s === "notafinding") return "NotAFinding";
+    if(s === "not_applicable" || s === "notapplicable") return "Not_Applicable";
+    return "Not_Reviewed";
+  }
+
+  // one CKL file can contain multiple <iSTIG> blocks (multiple STIGs applied to one asset) —
+  // emit one dashboard "asset" entry per iSTIG so each STIG can be browsed independently.
+  function parseCKL(xmlText, filename){
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xmlText, "application/xml");
+    const errNode = doc.querySelector("parsererror");
+    if(errNode){ throw new Error("XML could not be parsed"); }
+
+    const assetEl = doc.querySelector("ASSET");
+    const hostName = assetEl ? (textOf(assetEl,"HOST_NAME") || filename) : filename;
+    const hostIp = assetEl ? textOf(assetEl,"HOST_IP") : "";
+    const hostFqdn = assetEl ? textOf(assetEl,"HOST_FQDN") : "";
+    const role = assetEl ? textOf(assetEl,"ROLE") : "";
+
+    const iStigEls = doc.querySelectorAll("STIGS iSTIG");
+    const results = [];
+
+    iStigEls.forEach((iStig, sIdx)=>{
+      const stigInfo = iStig.querySelector("STIG_INFO");
+      let stigTitle = "", stigVersion = "", releaseInfo = "";
+      if(stigInfo){
+        const sids = stigInfo.querySelectorAll("SI_DATA");
+        sids.forEach(sd=>{
+          const name = sd.querySelector("SID_NAME");
+          const data = sd.querySelector("SID_DATA");
+          if(!name) return;
+          const n = name.textContent.trim();
+          const v = data ? data.textContent.trim() : "";
+          if(n === "title") stigTitle = v;
+          if(n === "version") stigVersion = v;
+          if(n === "releaseinfo") releaseInfo = v;
+        });
+      }
+
+      const vulnEls = iStig.querySelectorAll("VULN");
+      const vulns = [];
+      vulnEls.forEach((v, idx)=>{
+        const am = buildAttrMap(v);
+        const g = name => am.get(name) || "";
+        vulns.push({
+          id: filename + "-" + sIdx + "-" + idx,
+          vulnNum: g("Vuln_Num"),
+          ruleId: g("Rule_ID"),
+          ruleVer: g("Rule_Ver"),
+          ruleTitle: g("Rule_Title") || "(untitled rule)",
+          severity: (g("Severity") || "medium").toLowerCase(),
+          groupTitle: g("Group_Title"),
+          discussion: g("Vuln_Discuss"),
+          checkContent: g("Check_Content"),
+          fixText: g("Fix_Text"),
+          cci: g("CCI_REF"),
+          status: normalizeStatus(textOf(v,"STATUS")),
+          findingDetails: textOf(v,"FINDING_DETAILS"),
+          comments: textOf(v,"COMMENTS")
+        });
+      });
+
+      results.push({
+        id: filename + "_" + sIdx + "_" + Math.random().toString(36).slice(2,8),
+        fileName: filename + (iStigEls.length > 1 ? "  ·  " + (stigTitle||"STIG "+(sIdx+1)) : ""),
+        hostName, hostIp, hostFqdn, role,
+        stigTitle, stigVersion, releaseInfo,
+        vulns
+      });
+    });
+
+    return results;
+  }
+
+  // CKLB is the newer JSON checklist format (STIG Viewer 3 / STIG Manager exports).
+  // A single .cklb can list several STIGs under "stigs", each becomes its own asset entry.
+  function parseCKLB(jsonText, filename){
+    const data = JSON.parse(jsonText);
+    const target = data.target_data || data.target || {};
+    const hostName = target.host_name || target.hostname || data.title || filename;
+    const hostIp = target.ip_address || target.host_ip || "";
+    const hostFqdn = target.fqdn || "";
+    const role = target.role || "";
+
+    const stigs = Array.isArray(data.stigs) ? data.stigs : [];
+    const results = [];
+
+    stigs.forEach((stig, sIdx)=>{
+      const stigTitle = stig.display_name || stig.stig_name || stig.stig_id || "";
+      const stigVersion = (stig.version !== undefined && stig.version !== null) ? String(stig.version) : "";
+      const releaseInfo = stig.release_info || "";
+
+      const rules = Array.isArray(stig.rules) ? stig.rules : [];
+      const vulns = rules.map((r, idx)=>{
+        const check = r.check_content;
+        const fix = r.fix_text;
+        const ccis = Array.isArray(r.ccis) ? r.ccis.join(", ") : (r.cci || "");
+        return {
+          id: filename + "_" + sIdx + "-" + idx,
+          vulnNum: r.group_id || r.rule_id || "",
+          ruleId: r.rule_id || "",
+          ruleVer: r.rule_version || r.rule_id || "",
+          ruleTitle: r.rule_title || r.group_title || "(untitled rule)",
+          severity: (r.severity || "medium").toLowerCase(),
+          groupTitle: r.group_title || r.group_id || "",
+          discussion: r.discussion || r.vuln_discuss || "",
+          checkContent: typeof check === "object" && check ? (check.content||"") : (check||""),
+          fixText: typeof fix === "object" && fix ? (fix.text||"") : (fix||""),
+          cci: ccis,
+          status: normalizeStatus(r.status),
+          findingDetails: r.finding_details || "",
+          comments: r.comments || ""
+        };
+      });
+
+      results.push({
+        id: filename + "_" + sIdx + "_" + Math.random().toString(36).slice(2,8),
+        fileName: filename + (stigs.length > 1 ? "  ·  " + (stigTitle||"STIG "+(sIdx+1)) : ""),
+        hostName, hostIp, hostFqdn, role,
+        stigTitle, stigVersion, releaseInfo,
+        vulns
+      });
+    });
+
+    return results;
+  }
+
+  function handleFiles(fileList){
+    const files = Array.from(fileList).filter(f => /\.(ckl|cklb|xml)$/i.test(f.name));
+    if(files.length === 0) return;
+    let remaining = files.length;
+    files.forEach(f=>{
+      const reader = new FileReader();
+      reader.onload = e=>{
+        try{
+          const isCklb = /\.cklb$/i.test(f.name);
+          const newAssets = isCklb ? parseCKLB(e.target.result, f.name) : parseCKL(e.target.result, f.name);
+          if(!newAssets.length){
+            alert(f.name + " parsed but contained no STIGs/rules.");
+          }
+          newAssets.forEach(a => assets.push(a));
+        }catch(err){
+          console.error("Failed to parse", f.name, err);
+          alert("Could not parse " + f.name + " — is it a valid CKL/CKLB file?");
+        }
+        remaining--;
+        if(remaining === 0){
+          if(bladeStack.length === 0){ goMenu("dashboard"); }
+          else { updateShellChrome(); refreshDependentBlades(()=>true); }
+        }
+      };
+      reader.readAsText(f);
+    });
+  }
+
+  function removeAsset(id){
+    closeColMenu(); closeColFilterMenu(); closeWidgetMenu(); hideTooltip();
+    assets = assets.filter(a => a.id !== id);
+    const blade = newBlade("import", "Import", {});
+    blade.__menu = "import";
+    bladeStack = [blade];
+    updateShellChrome();
+    fullRebuildBladeStack();
+  }
+
+  // ---- Drag & drop / file input wiring ----
+  const dropzone = $("#dropzone");
+  const fileInput = $("#fileInput");
+  $("#pickBtn").addEventListener("click", ()=> fileInput.click());
+  $("#addMoreBtn").addEventListener("click", ()=> fileInput.click());
+  dropzone.addEventListener("click", ()=> fileInput.click());
+  fileInput.addEventListener("change", e => { handleFiles(e.target.files); fileInput.value = ""; });
+
+  const acrCsvInput = $("#acrCsvInput");
+  acrCsvInput.addEventListener("change", e=>{
+    const file = e.target.files[0];
+    acrCsvInput.value = "";
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ev=>{
+      let result;
+      try{
+        result = applyAcrOverridesCSV(ev.target.result);
+      }catch(err){
+        console.error("Failed to parse ACR overrides CSV", err);
+        alert("Could not parse " + file.name + " — expected a CSV with columns: hostname, acr.");
+        return;
+      }
+      let msg = `ACR overrides applied: ${result.applied}`;
+      if(result.notFound.length) msg += `\n\nHostname(s) not found among loaded assets (${result.notFound.length}):\n` + result.notFound.slice(0,20).join(", ") + (result.notFound.length>20 ? ", ..." : "");
+      if(result.invalid.length) msg += `\n\nInvalid ACR value(s), must be an integer 1–10 (${result.invalid.length}):\n` + result.invalid.slice(0,20).join(", ") + (result.invalid.length>20 ? ", ..." : "");
+      alert(msg);
+      if(result.applied > 0){
+        refreshDependentBlades(()=>true);
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  ["dragenter","dragover"].forEach(ev=>{
+    document.body.addEventListener(ev, e=>{ e.preventDefault(); dropzone.classList.add("drag"); });
+  });
+  ["dragleave","drop"].forEach(ev=>{
+    document.body.addEventListener(ev, e=>{ e.preventDefault(); if(ev==="drop"||e.target===document.body) dropzone.classList.remove("drag"); });
+  });
+  document.body.addEventListener("drop", e=>{
+    e.preventDefault();
+    if(e.dataTransfer && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+  });
+
+  // ==================================================================
+  // Requirement 3 & 8 — Asset Criticality Rating (ACR) and
+  // Asset Exposure Score (AES)
+  // ==================================================================
+
+  // Curated OS/platform-defining STIG title signals, used only when the
+  // declared asset role doesn't already settle the question. Deliberately
+  // excludes per-application STIGs (browsers, PDF readers, Office, .NET,
+  // endpoint firewall/AV/EDR clients, remote-access agents, etc.) — nearly
+  // every device collects several of those regardless of its actual role,
+  // and matching them caused false positives (e.g. a workstation's local
+  // "Windows Defender Firewall" STIG being read as evidence the device
+  // itself was a firewall appliance).
+  const OS_ROLE_PATTERNS = [
+    {score:10, tags:["active directory domain services","active directory forest","domain controller"], label:"Domain Controller (platform STIG)"},
+    {score:9,  tags:["ms sql server","mysql server","postgresql","oracle database","db2 database","mongodb enterprise"], label:"Database Server (platform STIG)"},
+    {score:9,  tags:["iis 10.0 server","iis 8.5 server","apache server","apache tomcat","nginx"], label:"Web Server (platform STIG)"},
+    {score:8,  tags:["vmware vsphere","esxi","vcenter","hyper-v"], label:"VM Host / Hypervisor (platform STIG)"},
+    {score:8,  tags:["kubernetes"], label:"Container Host (platform STIG)"},
+    {score:8,  tags:["cisco ios","juniper","router stig","switch stig","layer 2 switch","layer 3 switch"], label:"Network Infrastructure Device (platform STIG)"},
+    {score:8,  tags:["palo alto","perimeter firewall","juniper srx"], label:"Perimeter Firewall Appliance (platform STIG)"},
+    {score:7,  tags:["storage area network","network attached storage"], label:"File / Storage Server (platform STIG)"},
+    {score:6,  tags:["windows server","red hat enterprise linux","ubuntu server","solaris","z/os","suse linux enterprise"], label:"Server Operating System"},
+    {score:4,  tags:["windows 10","windows 11","apple macos"], label:"Workstation Operating System"},
+    {score:3,  tags:["mobile device management","apple ios","google android"], label:"Mobile Device"},
+    {score:2,  tags:["multifunction device","printer stig"], label:"Printer / Peripheral"}
+  ];
+  // A handful of unambiguous hostname conventions, used only as a last
+  // resort when there's no declared role and no matching platform STIG.
+  const HOSTNAME_HINTS = [
+    {score:10, tags:["-dc0","-dc1","-dc-"], label:"hostname suggests Domain Controller"},
+    {score:9,  tags:["-sql","-db-"], label:"hostname suggests Database Server"},
+    {score:9,  tags:["-web","-www"], label:"hostname suggests Web Server"},
+    {score:8,  tags:["-rtr","-router","-sw0","-switch"], label:"hostname suggests Network Device"},
+    {score:8,  tags:["-fw","-firewall"], label:"hostname suggests Firewall Appliance"},
+    {score:4,  tags:["-lap","-laptop","-wks","-pc0","-desktop"], label:"hostname suggests Workstation"}
+  ];
+  const EXPOSURE_TAGS = ["dmz","internet facing","internet-facing","public facing","public-facing","publicly accessible","internet accessible","external facing","externally accessible"];
+
+  function matchOsRolePattern(host){
+    const corpus = (host.stigs||[]).map(s=>s.stigTitle||"").join(" ").toLowerCase();
+    let best = null;
+    OS_ROLE_PATTERNS.forEach(p=>{
+      if(p.tags.some(tag=>corpus.includes(tag)) && (!best || p.score > best.score)) best = p;
+    });
+    return best;
+  }
+
+  function matchHostnameHint(hostNameLower){
+    let best = null;
+    HOSTNAME_HINTS.forEach(p=>{
+      if(p.tags.some(tag=>hostNameLower.includes(tag)) && (!best || p.score > best.score)) best = p;
+    });
+    return best;
+  }
+
+  function inferAutoACR(host){
+    const roleField = (host.role||"").trim().toLowerCase();
+    const hostNameLower = (host.hostName||"").toLowerCase();
+    const osMatch = matchOsRolePattern(host);
+
+    let score, label;
+    if(roleField === "domain controller"){
+      // The CKL/CKLB ASSET record's declared role is authoritative —
+      // trust it outright.
+      score = 10; label = "Domain Controller (declared asset role)";
+    } else if(roleField === "workstation"){
+      // Declared role wins even if the host also carries STIGs whose
+      // titles mention "server", "firewall", etc. — those are just
+      // locally-installed application/agent STIGs, not evidence the
+      // device itself fills that role.
+      score = 4; label = "Workstation (declared asset role)";
+    } else if(roleField === "member server"){
+      if(osMatch){ score = osMatch.score; label = osMatch.label; }
+      else { score = 6; label = "Member Server (declared asset role)"; }
+    } else if(osMatch){
+      // No declared role (or it was blank/"None") — fall back to an
+      // OS/platform-defining STIG if one is present.
+      score = osMatch.score; label = osMatch.label;
+    } else {
+      const hint = matchHostnameHint(hostNameLower);
+      if(hint){ score = hint.score; label = hint.label; }
+      else { score = 5; label = "Unclassified device — no reliable role signal (default mid score)"; }
+    }
+
+    const exposed = EXPOSURE_TAGS.some(tag => (host.role||"").toLowerCase().includes(tag) || hostNameLower.includes(tag));
+    score = Math.max(1, Math.min(10, score + (exposed ? 1 : 0)));
+    return {auto:score, matchedRole:label, exposed};
+  }
+
+  function getACR(hostKey, host){
+    const auto = inferAutoACR(host);
+    if(acrOverrides.has(hostKey)){
+      return {value:acrOverrides.get(hostKey), isOverride:true, auto:auto.auto, matchedRole:auto.matchedRole, exposed:auto.exposed};
+    }
+    return {value:auto.auto, isOverride:false, auto:auto.auto, matchedRole:auto.matchedRole, exposed:auto.exposed};
+  }
+
+  // Minimal CSV line splitter — handles quoted fields (with escaped "" and
+  // embedded commas), which is all the "hostname, acr" override format needs.
+  function splitCSVLine(line){
+    const result = [];
+    let cur = "", inQuotes = false;
+    for(let i=0;i<line.length;i++){
+      const ch = line[i];
+      if(inQuotes){
+        if(ch === '"'){
+          if(line[i+1] === '"'){ cur += '"'; i++; }
+          else inQuotes = false;
+        } else cur += ch;
+      } else {
+        if(ch === '"') inQuotes = true;
+        else if(ch === ","){ result.push(cur); cur = ""; }
+        else cur += ch;
+      }
+    }
+    result.push(cur);
+    return result;
+  }
+
+  // Parses a "hostname,acr" CSV and applies each row as an ACR override —
+  // matched case-insensitively against each host's declared name. Returns
+  // a summary so the caller can report what happened.
+  function applyAcrOverridesCSV(text){
+    const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim().length > 0);
+    const hosts = groupAssetsByHost();
+    const hostByName = new Map();
+    hosts.forEach(h=>{
+      hostByName.set((h.hostName||"").toLowerCase(), h);
+      hostByName.set((h.hostKey||"").toLowerCase(), h);
+    });
+
+    let startIdx = 0;
+    if(lines.length){
+      const firstCols = splitCSVLine(lines[0]).map(c=>c.trim().toLowerCase());
+      if(firstCols.includes("hostname") && firstCols.includes("acr")) startIdx = 1;
+    }
+
+    let applied = 0;
+    const notFound = [], invalid = [];
+    for(let i=startIdx; i<lines.length; i++){
+      const cols = splitCSVLine(lines[i]);
+      if(cols.length < 2) continue;
+      const hostname = (cols[0]||"").trim();
+      const acrRaw = (cols[1]||"").trim();
+      if(!hostname) continue;
+      if(!/^(10|[1-9])$/.test(acrRaw)){
+        invalid.push(`${hostname} ("${acrRaw}")`);
+        continue;
+      }
+      const acrNum = parseInt(acrRaw, 10);
+      const host = hostByName.get(hostname.toLowerCase());
+      if(!host){
+        notFound.push(hostname);
+        continue;
+      }
+      acrOverrides.set(host.hostKey, acrNum);
+      applied++;
+    }
+    return {applied, notFound, invalid};
+  }
+
+  function acrBand(v){
+    if(v>=9) return "9-10";
+    if(v>=7) return "7-8";
+    if(v>=4) return "4-6";
+    return "1-3";
+  }
+
+  // Requirement 4 — ACR (row) x CAT (column) => finding criticality.
+  // CAT I ("high") carries the more severe outcome at each ACR band,
+  // CAT III ("low") the less severe one.
+  const CRIT_MATRIX = {
+    "9-10": {high:"C", medium:"H", low:"M"},
+    "7-8":  {high:"C", medium:"H", low:"M"},
+    "4-6":  {high:"H", medium:"M", low:"L"},
+    "1-3":  {high:"H", medium:"M", low:"L"}
+  };
+  function findingCriticality(acrValue, severity){
+    const band = acrBand(acrValue);
+    return (CRIT_MATRIX[band] && CRIT_MATRIX[band][severity]) || "L";
+  }
+
+  // Requirement 8 — AES: ACR combined with severity-weighted exposure from open/unreviewed findings, 0-1000
+  function computeAES(host, acrValue){
+    let raw = 0;
+    (host.stigs||[]).forEach(a=>{
+      a.vulns.forEach(v=>{
+        if(v.status === "Open"){
+          raw += v.severity==="high" ? 10 : v.severity==="medium" ? 6 : 3;
+        } else if(v.status === "Not_Reviewed"){
+          raw += v.severity==="high" ? 4 : v.severity==="medium" ? 2 : 1;
+        }
+      });
+    });
+    const exposureScore = 1000 * (1 - Math.exp(-raw/40));
+    const multiplier = 0.3 + 0.07*acrValue;
+    const aes = Math.round(Math.min(1000, exposureScore*multiplier));
+    return {aes, raw, exposureScore:Math.round(exposureScore)};
+  }
+
+  function aesBand(aes){
+    if(aes>=900) return "Critical";
+    if(aes>=700) return "High";
+    if(aes>=400) return "Medium";
+    return "Low";
+  }
+
+  function acrBadgeHtml(hostKey, host){
+    const info = getACR(hostKey, host);
+    const tip = info.isOverride
+      ? `Manually overridden to ${info.value}/10. Auto-calculated value was ${info.auto}/10 (${info.matchedRole}${info.exposed?", internet-exposed":""}).`
+      : `Auto-calculated ${info.value}/10 from device role signals: ${info.matchedRole}${info.exposed?" (internet-exposed, +1)":""}.`;
+    return `<span class="acr-badge tooltip" data-tip="${esc(tip)}">${info.value}</span>`;
+  }
+  function aesBadgeHtml(aes){
+    const band = aesBand(aes);
+    const cls = {Low:"crit-l",Medium:"crit-m",High:"crit-h",Critical:"crit-c"}[band];
+    const tip = `AES (Asset Exposure Score): combines this asset's ACR with the severity-weighted exposure of its Open and Not Reviewed STIG findings (CAT I / II / III), scaled 0-1000. This asset scores ${aes} -> ${band}.`;
+    return `<span class="aes-badge ${cls} tooltip" data-tip="${esc(tip)}">${aes}</span>`;
+  }
+  function critBadgeHtml(letter){
+    const cls = {L:"crit-l",M:"crit-m",H:"crit-h",C:"crit-c"}[letter]||"crit-l";
+    return `<span class="crit-badge ${cls}">${letter}</span>`;
+  }
+
+  // ==================================================================
+  // Stats helpers
+  // ==================================================================
+
+  function computeStats(vulns){
+    const stats = {Open:0, Not_Reviewed:0, NotAFinding:0, Not_Applicable:0};
+    const bySev = {high:{Open:0,Not_Reviewed:0,NotAFinding:0,Not_Applicable:0,total:0},
+                    medium:{Open:0,Not_Reviewed:0,NotAFinding:0,Not_Applicable:0,total:0},
+                    low:{Open:0,Not_Reviewed:0,NotAFinding:0,Not_Applicable:0,total:0}};
+    vulns.forEach(v=>{
+      stats[v.status] = (stats[v.status]||0) + 1;
+      if(!bySev[v.severity]) bySev[v.severity] = {Open:0,Not_Reviewed:0,NotAFinding:0,Not_Applicable:0,total:0};
+      bySev[v.severity][v.status]++;
+      bySev[v.severity].total++;
+    });
+    return {stats, bySev};
+  }
+
+  function catRowHtml(bySev, sevKey, label, cls){
+    const d = bySev[sevKey] || {Open:0,Not_Reviewed:0,NotAFinding:0,Not_Applicable:0,total:0};
+    const t = d.total || 1;
+    const pctClosed = d.total ? Math.round(((d.NotAFinding + d.Not_Applicable) / d.total) * 100) : 100;
+    return `<div class="cat-row">
+      <div class="cat-tag ${cls}">${label}</div>
+      <div class="meter">
+        <div class="seg open" style="width:${d.Open/t*100}%"></div>
+        <div class="seg nr" style="width:${d.Not_Reviewed/t*100}%"></div>
+        <div class="seg naf" style="width:${d.NotAFinding/t*100}%"></div>
+        <div class="seg na" style="width:${d.Not_Applicable/t*100}%"></div>
+      </div>
+      <div class="cat-pct">${d.total ? pctClosed+"%" : "—"}</div>
+    </div>`;
+  }
+
+  function statusTilesHtml(stats){
+    return `
+      <div class="tiles">
+        <div class="tile open"><div class="n">${stats.Open}</div><div class="lbl">Open</div></div>
+        <div class="tile nr"><div class="n">${stats.Not_Reviewed}</div><div class="lbl">Not Reviewed</div></div>
+        <div class="tile naf"><div class="n">${stats.NotAFinding}</div><div class="lbl">Not a Finding</div></div>
+        <div class="tile na"><div class="n">${stats.Not_Applicable}</div><div class="lbl">Not Applicable</div></div>
+      </div>`;
+  }
+
+  function complianceBarsHtml(vulns){
+    const {bySev, stats} = computeStats(vulns);
+    const overallClosed = vulns.length ? Math.round(((stats.NotAFinding+stats.Not_Applicable)/vulns.length)*100) : 0;
+    return `
+      <div class="compliance-block">
+        <div class="head"><h3>Compliance by Category</h3><span class="overall">${overallClosed}% closed overall · ${vulns.length} rules</span></div>
+        ${catRowHtml(bySev,"high","CAT I","c1")}
+        ${catRowHtml(bySev,"medium","CAT II","c2")}
+        ${catRowHtml(bySev,"low","CAT III","c3")}
+        <div class="legend">
+          <span><i class="open"></i>Open</span><span><i class="nr"></i>Not Reviewed</span>
+          <span><i class="naf"></i>Not a Finding</span><span><i class="na"></i>Not Applicable</span>
+        </div>
+      </div>`;
+  }
+
+  function complianceBlockHtml(vulns){
+    const {stats} = computeStats(vulns);
+    return statusTilesHtml(stats) + complianceBarsHtml(vulns);
+  }
+
+  // ==================================================================
+  // Requirement 4 — ACR x CAT matrix + criticality summary panel
+  // ==================================================================
+
+  function computeMatrixCounts(assetRows){
+    const counts = {"9-10":{high:0,medium:0,low:0}, "7-8":{high:0,medium:0,low:0}, "4-6":{high:0,medium:0,low:0}, "1-3":{high:0,medium:0,low:0}};
+    assetRows.forEach(r=>{
+      const band = acrBand(r.acr);
+      r.host.stigs.forEach(a=>a.vulns.forEach(v=>{
+        if(v.status !== "Open") return;
+        counts[band][v.severity] = (counts[band][v.severity]||0) + 1;
+      }));
+    });
+    return counts;
+  }
+
+  function acrCatMatrixHtml(bladeIndex, assetRows){
+    const rows = [["9-10","9–10"],["7-8","7–8"],["4-6","4–6"],["1-3","1–3"]];
+    const sevCols = [["low","CAT III"],["medium","CAT II"],["high","CAT I"]];
+    const words = {L:"Low", M:"Medium", H:"High", C:"Critical"};
+    const counts = computeMatrixCounts(assetRows);
+    return `<div class="matrix-block">
+      <div class="head"><h3>ACR × CAT Criticality Matrix</h3><span class="overall tooltip" data-tip="Rows = Asset Criticality Rating band. Columns = STIG finding severity category. Each cell shows the count of Open findings in that combination, colored by the resulting criticality. Click a cell to view matching findings.">how is this used?</span></div>
+      <table class="matrix-table">
+        <thead><tr><th>ACR</th>${sevCols.map(c=>`<th>${c[1]}</th>`).join("")}</tr></thead>
+        <tbody>
+          ${rows.map(r=>`<tr><td class="acr-row-label">${r[1]}</td>${sevCols.map(c=>{
+            const letter = CRIT_MATRIX[r[0]][c[0]];
+            const count = counts[r[0]][c[0]] || 0;
+            const tip = `${count} Open ${c[1]} finding${count===1?"":"s"} on assets with ACR ${r[1]} — ${words[letter]} criticality.`;
+            return `<td class="matrix-cell crit-${letter.toLowerCase()} tooltip" data-tip="${esc(tip)}" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="${words[letter]} Criticality — ACR ${r[1]} / ${c[1]}" data-preset-crit="${letter}" data-preset-acrband="${r[0]}" data-preset-sev="${c[0]}" data-preset-status="Open"><div class="matrix-count">${count}</div></td>`;
+          }).join("")}</tr>`).join("")}
+        </tbody>
+      </table>
+      <div class="legend">
+        <span><i class="crit-l"></i>Low</span><span><i class="crit-m"></i>Medium</span>
+        <span><i class="crit-h"></i>High</span><span><i class="crit-c"></i>Critical</span>
+      </div>
+    </div>`;
+  }
+
+  function critSummaryHtml(bladeIndex, assetRows){
+    const counts = {L:0,M:0,H:0,C:0};
+    assetRows.forEach(r=>{
+      const acrVal = r.acr;
+      r.host.stigs.forEach(a=>a.vulns.forEach(v=>{
+        if(v.status !== "Open") return;
+        counts[findingCriticality(acrVal, v.severity)]++;
+      }));
+    });
+    const words = {C:"Critical", H:"High", M:"Medium", L:"Low"};
+    return `<div class="crit-summary-block">
+      <div class="head"><h3>Summary</h3></div>
+      <div class="crit-tiles">
+        ${["C","H","M","L"].map(l=>`<div class="crit-tile crit-${l.toLowerCase()}" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="${words[l]} Criticality Findings" data-preset-crit="${l}">
+          <div class="n">${counts[l]}</div><div class="lbl">${words[l]}</div>
+        </div>`).join("")}
+      </div>
+    </div>`;
+  }
+
+  function dashboardTilesHtml(bladeIndex, stats, assetCount){
+    return `<div class="tiles">
+      <div class="tile assetsTile" data-action="drill" data-blade-index="${bladeIndex}" data-type="assets" data-title="All Assets"><div class="n">${assetCount}</div><div class="lbl">Assets</div></div>
+      <div class="tile open" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="Open Findings" data-preset-status="Open"><div class="n">${stats.Open}</div><div class="lbl">Open</div></div>
+      <div class="tile nr" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="Not Reviewed Findings" data-preset-status="Not_Reviewed"><div class="n">${stats.Not_Reviewed}</div><div class="lbl">Not Reviewed</div></div>
+      <div class="tile naf" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="Not a Finding" data-preset-status="NotAFinding"><div class="n">${stats.NotAFinding}</div><div class="lbl">Not a Finding</div></div>
+      <div class="tile na" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="Not Applicable Findings" data-preset-status="Not_Applicable"><div class="n">${stats.Not_Applicable}</div><div class="lbl">Not Applicable</div></div>
+    </div>`;
+  }
+
+  function aesTilesHtml(bladeIndex, rows){
+    const counts = {Low:0,Medium:0,High:0,Critical:0};
+    rows.forEach(r=> counts[aesBand(r.aes)]++ );
+    const bandClass = {Low:"crit-lb",Medium:"crit-mb",High:"crit-hb",Critical:"crit-cb"};
+    return `<div class="aes-tiles-wrap">
+      <div class="compliance-block" style="padding-bottom:16px;">
+        <div class="head"><h3>Assets by AES Summary</h3><span class="overall tooltip" data-tip="AES combines each asset's Asset Criticality Rating (ACR) with the severity-weighted exposure of its open and unreviewed STIG findings, scaled 0–1000. Bands: 0–399 Low, 400–699 Medium, 700–899 High, 900–1000 Critical.">what is AES?</span></div>
+        <div class="tiles">
+          ${["Critical","High","Medium","Low"].map(band=>`<div class="tile aesTile ${bandClass[band]}" data-action="drill" data-blade-index="${bladeIndex}" data-type="assets" data-title="${band} AES Assets" data-preset-aes="${band}"><div class="n">${counts[band]}</div><div class="lbl">${band}</div></div>`).join("")}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // CES — Composite Exposure Score: the average AES across every loaded
+  // asset, shown as a dash/speedometer-style gauge with fixed benchmark
+  // ticks at 300/500/700/900 and color bands matching the AES scale.
+  function computeCES(rows){
+    if(!rows.length) return 0;
+    return Math.round(rows.reduce((s,r)=>s+r.aes,0) / rows.length);
+  }
+
+  function cesGaugeSvg(ces){
+    const cx = 160, cy = 150, r = 100, bandWidth = 16;
+    const bands = [
+      [0,300,"#4ea8de"],    // blue
+      [300,500,"#d9be4a"],  // yellow
+      [500,700,"#e08a3c"],  // orange
+      [700,900,"#e5484d"],  // red
+      [900,1000,"#7a1620"]  // dark red
+    ];
+    const angleOf = v => 180 - (Math.max(0,Math.min(1000,v))/1000)*180;
+    const pt = (rad, ang) => {
+      const t = ang*Math.PI/180;
+      return {x: cx + rad*Math.cos(t), y: cy - rad*Math.sin(t)};
+    };
+    const arcPath = (v1, v2, rad) => {
+      const a1 = angleOf(v1), a2 = angleOf(v2);
+      const p1 = pt(rad,a1), p2 = pt(rad,a2);
+      const large = (a1-a2) > 180 ? 1 : 0;
+      return `M ${p1.x.toFixed(1)} ${p1.y.toFixed(1)} A ${rad} ${rad} 0 ${large} 1 ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+    };
+    const bandsSvg = bands.map(([v1,v2,color])=>
+      `<path d="${arcPath(v1,v2,r)}" stroke="${color}" stroke-width="${bandWidth}" fill="none"/>`
+    ).join("");
+    const ticksSvg = [300,500,700,900].map(v=>{
+      const a = angleOf(v);
+      const inner = pt(r-bandWidth/2-4, a);
+      const outer = pt(r+bandWidth/2+4, a);
+      const labelPt = pt(r+bandWidth/2+18, a);
+      return `<line x1="${inner.x.toFixed(1)}" y1="${inner.y.toFixed(1)}" x2="${outer.x.toFixed(1)}" y2="${outer.y.toFixed(1)}" stroke="#8196a3" stroke-width="1.5"/>
+        <text x="${labelPt.x.toFixed(1)}" y="${labelPt.y.toFixed(1)}" fill="#8196a3" font-size="10" font-family="ui-monospace,monospace" text-anchor="middle" dominant-baseline="middle">${v}</text>`;
+    }).join("");
+    const needleAngle = angleOf(ces);
+    const needleTip = pt(r-bandWidth/2-2, needleAngle);
+    const needleSvg = `<line x1="${cx}" y1="${cy}" x2="${needleTip.x.toFixed(1)}" y2="${needleTip.y.toFixed(1)}" stroke="#e7edf0" stroke-width="3" stroke-linecap="round"/><circle cx="${cx}" cy="${cy}" r="6" fill="#e7edf0"/>`;
+    return `<svg viewBox="0 0 320 212" class="ces-gauge-svg">
+      ${bandsSvg}
+      ${ticksSvg}
+      ${needleSvg}
+      <text x="${cx}" y="${cy+38}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="30" font-weight="800" fill="#e7edf0">${ces}</text>
+      <text x="${cx}" y="${cy+56}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#8196a3" letter-spacing="1">CES</text>
+    </svg>`;
+  }
+
+  function cesPanelHtml(rows){
+    const ces = computeCES(rows);
+    return `<div class="ces-panel">
+      <div class="head"><h3>CES — Composite Exposure Score</h3><span class="overall tooltip" data-tip="CES is the average Asset Exposure Score (AES) across all loaded assets — a single dashboard-level readout of overall exposure, on the same 0–1000 scale and color bands as AES.">what is CES?</span></div>
+      <div class="ces-gauge-wrap">${cesGaugeSvg(ces)}</div>
+    </div>`;
+  }
+
+  // Scatter plot — one point per host, X = AES score, Y = total STIG finding
+  // count, with the same 300/500/700/900 benchmark lines used on the gauge.
+  function scatterPlotSvg(rows, bladeIndex){
+    const W = 480, H = 300, mL = 46, mR = 18, mT = 16, mB = 42;
+    const pw = W-mL-mR, ph = H-mT-mB;
+    const maxCount = Math.max(1, ...rows.map(r=>r.total));
+    const yMax = Math.max(10, Math.ceil((maxCount*1.15)/10)*10);
+    const xOf = aes => mL + (Math.max(0,Math.min(1000,aes))/1000)*pw;
+    const yOf = c => mT + ph - (Math.max(0,c)/yMax)*ph;
+    const bandColor = aes => aes>=900?"#7a1620": aes>=700?"#e5484d": aes>=500?"#e08a3c": aes>=300?"#d9be4a":"#4ea8de";
+
+    const yTicks = [0, Math.round(yMax/2), yMax].map(v=>{
+      const y = yOf(v);
+      return `<line x1="${mL}" y1="${y.toFixed(1)}" x2="${mL+pw}" y2="${y.toFixed(1)}" stroke="#1c2830" stroke-width="1"/>
+        <text x="${mL-8}" y="${y.toFixed(1)}" text-anchor="end" dominant-baseline="middle" font-size="9" font-family="ui-monospace,monospace" fill="#8196a3">${v}</text>`;
+    }).join("");
+
+    const benchLines = [300,500,700,900].map(v=>{
+      const x = xOf(v);
+      return `<line x1="${x.toFixed(1)}" y1="${mT}" x2="${x.toFixed(1)}" y2="${mT+ph}" stroke="#324450" stroke-width="1" stroke-dasharray="4 3"/>
+        <text x="${x.toFixed(1)}" y="${mT+ph+16}" text-anchor="middle" font-size="9" font-family="ui-monospace,monospace" fill="#8196a3">${v}</text>`;
+    }).join("");
+
+    const xEndLabels = [0,1000].map(v=>{
+      const x = xOf(v);
+      return `<text x="${x.toFixed(1)}" y="${mT+ph+16}" text-anchor="${v===0?'start':'end'}" font-size="9" font-family="ui-monospace,monospace" fill="#526270">${v}</text>`;
+    }).join("");
+
+    const points = rows.map(r=>{
+      const cx = xOf(r.aes), cy = yOf(r.total);
+      return `<g data-action="drill" data-blade-index="${bladeIndex}" data-type="assetDetail" data-title="${esc(r.host.hostName)}" data-hostkey="${esc(r.host.hostKey)}">
+        <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="10" fill="transparent"/>
+        <circle class="dot-fill" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5" fill="${bandColor(r.aes)}" fill-opacity="0.85" stroke="#0a0f13" stroke-width="1"/>
+        <title>${esc(r.host.hostName)} — AES ${r.aes}, ${r.total} findings</title>
+      </g>`;
+    }).join("");
+
+    return `<svg viewBox="0 0 ${W} ${H}" class="scatter-svg">
+      ${yTicks}
+      <line x1="${mL}" y1="${mT}" x2="${mL}" y2="${mT+ph}" stroke="#324450" stroke-width="1"/>
+      <line x1="${mL}" y1="${mT+ph}" x2="${mL+pw}" y2="${mT+ph}" stroke="#324450" stroke-width="1"/>
+      ${benchLines}
+      ${xEndLabels}
+      ${points}
+      <text x="${mL+pw/2}" y="${H-4}" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#8196a3" letter-spacing="1">AES SCORE</text>
+      <text x="12" y="${mT+ph/2}" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#8196a3" letter-spacing="1" transform="rotate(-90 12 ${mT+ph/2})">FINDINGS</text>
+    </svg>`;
+  }
+
+  function scatterPanelHtml(rows, bladeIndex){
+    if(!rows.length) return "";
+    return `<div class="scatter-panel">
+      <div class="head"><h3>AES vs. Finding Count</h3><span class="overall tooltip" data-tip="Each point is one asset — X axis is its AES (Asset Exposure Score), Y axis is its total STIG finding count. Click a point to open that asset. Dashed lines mark the same 300/500/700/900 AES benchmarks used on the CES gauge.">what is this?</span></div>
+      <div class="scatter-wrap">${scatterPlotSvg(rows, bladeIndex)}</div>
+    </div>`;
+  }
+
+  // Risk Pareto — assets sorted by AES descending, with the smallest
+  // leading set of assets whose combined AES accounts for ~80% of the
+  // total AES across all assets ("the 80/20 rule") highlighted in red;
+  // the rest orange (the same orange used for the AES-vs-Finding-Count
+  // scatter's mid-band dots).
+  function computeParetoData(rows){
+    const sorted = rows.slice().sort((a,b)=> b.aes - a.aes);
+    const total = sorted.reduce((s,r)=>s+r.aes, 0);
+    let cum = 0, cutoffIndex = -1;
+    const items = sorted.map((r,i)=>{
+      cum += r.aes;
+      const cumPct = total > 0 ? (cum/total)*100 : 0;
+      if(total > 0 && cutoffIndex === -1 && cumPct >= 80) cutoffIndex = i;
+      return {row:r, cumPct};
+    });
+    return {items, cutoffIndex, total};
+  }
+
+  function paretoChartSvg(rows, bladeIndex){
+    const {items, cutoffIndex} = computeParetoData(rows);
+    const n = items.length;
+    const W = 560, H = 300, mL = 46, mR = 40, mT = 16, mB = 30;
+    const pw = W-mL-mR, ph = H-mT-mB;
+    const gap = n > 1 ? Math.min(4, (pw/n)*0.15) : 0;
+    const barW = n ? Math.max(1, (pw - gap*(n-1))/n) : 0;
+    const yOf = v => mT + ph - (Math.max(0,Math.min(1000,v))/1000)*ph;
+    const cumYOf = pct => mT + ph - (Math.max(0,Math.min(100,pct))/100)*ph;
+
+    const yTicks = [0,250,500,750,1000].map(v=>{
+      const y = yOf(v);
+      return `<line x1="${mL}" y1="${y.toFixed(1)}" x2="${mL+pw}" y2="${y.toFixed(1)}" stroke="#1c2830" stroke-width="1"/>
+        <text x="${mL-8}" y="${y.toFixed(1)}" text-anchor="end" dominant-baseline="middle" font-size="9" font-family="ui-monospace,monospace" fill="#8196a3">${v}</text>`;
+    }).join("");
+    const cumTicks = [0,50,100].map(v=>{
+      const y = cumYOf(v);
+      return `<text x="${mL+pw+8}" y="${y.toFixed(1)}" font-size="9" font-family="ui-monospace,monospace" fill="#4ea8de" dominant-baseline="middle">${v}%</text>`;
+    }).join("");
+
+    const eightyY = cumYOf(80);
+    const eightyLine = `<line x1="${mL}" y1="${eightyY.toFixed(1)}" x2="${mL+pw}" y2="${eightyY.toFixed(1)}" stroke="#8196a3" stroke-width="1" stroke-dasharray="3 3"/>`;
+
+    const cutoffLine = cutoffIndex >= 0 && cutoffIndex < n-1 ? (()=>{
+      const x = mL + (cutoffIndex+1)*(barW+gap) - gap/2;
+      return `<line x1="${x.toFixed(1)}" y1="${mT}" x2="${x.toFixed(1)}" y2="${mT+ph}" stroke="#e5484d" stroke-width="1" stroke-dasharray="4 3" opacity="0.55"/>`;
+    })() : "";
+
+    const bars = items.map((it,i)=>{
+      const x = mL + i*(barW+gap);
+      const y = yOf(it.row.aes);
+      const h = (mT+ph) - y;
+      const isPareto = cutoffIndex >= 0 && i <= cutoffIndex;
+      const color = isPareto ? "#e5484d" : "#e08a3c";
+      const tip = `${esc(it.row.host.hostName)} — AES ${it.row.aes}, cumulative ${it.cumPct.toFixed(1)}% of total risk`;
+      return `<g data-action="drill" data-blade-index="${bladeIndex}" data-type="assetDetail" data-title="${esc(it.row.host.hostName)}" data-hostkey="${esc(it.row.host.hostKey)}">
+        <rect x="${x.toFixed(1)}" y="${mT}" width="${barW.toFixed(2)}" height="${ph.toFixed(1)}" fill="transparent"/>
+        <rect class="bar-fill" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(2)}" height="${Math.max(0,h).toFixed(1)}" fill="${color}"/>
+        <title>${tip}</title>
+      </g>`;
+    }).join("");
+
+    const linePts = items.map((it,i)=>{
+      const x = mL + i*(barW+gap) + barW/2;
+      const y = cumYOf(it.cumPct);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(" ");
+    const cumLine = n ? `<polyline points="${linePts}" fill="none" stroke="#4ea8de" stroke-width="1.5"/>` : "";
+
+    return `<svg viewBox="0 0 ${W} ${H}" class="pareto-svg">
+      ${yTicks}
+      <line x1="${mL}" y1="${mT}" x2="${mL}" y2="${mT+ph}" stroke="#324450" stroke-width="1"/>
+      <line x1="${mL}" y1="${mT+ph}" x2="${mL+pw}" y2="${mT+ph}" stroke="#324450" stroke-width="1"/>
+      ${eightyLine}
+      ${cumTicks}
+      ${cutoffLine}
+      ${bars}
+      ${cumLine}
+      <text x="${mL+pw/2}" y="${H-4}" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#8196a3" letter-spacing="1">ASSETS — SORTED BY AES, HIGH → LOW</text>
+      <text x="12" y="${mT+ph/2}" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#8196a3" letter-spacing="1" transform="rotate(-90 12 ${mT+ph/2})">AES SCORE</text>
+    </svg>`;
+  }
+
+  function paretoPanelHtml(rows, bladeIndex){
+    if(!rows.length) return "";
+    return `<div class="scatter-panel">
+      <div class="head"><h3>Risk Pareto — Assets by AES</h3><span class="overall tooltip" data-tip="Assets sorted by AES (Asset Exposure Score), highest to lowest. Bars are red for the smallest leading set of assets whose combined AES adds up to roughly 80% of the total AES across every asset — the '80/20' Pareto principle — and orange for the rest. Click a bar to open that asset. The blue line tracks cumulative % of total AES; the dashed horizontal line marks the 80% threshold.">what is this?</span></div>
+      <div class="scatter-wrap">${paretoChartSvg(rows, bladeIndex)}</div>
+      <div class="legend">
+        <span><i style="background:#e5484d"></i>Pareto assets (≈80% of risk)</span>
+        <span><i style="background:#e08a3c"></i>Remaining assets</span>
+        <span><i style="background:#4ea8de"></i>Cumulative % of total AES</span>
+      </div>
+    </div>`;
+  }
+
+  // ==================================================================
+  // Requirement 1 & 7 — column-customizable, filterable, sortable tables
+  // ==================================================================
+
+  const ASSET_COLS = [
+    {key:"name", label:"Host Name", default:true, locked:true},
+    {key:"acr", label:"ACR", default:true},
+    {key:"aes", label:"AES", default:true},
+    {key:"stigCount", label:"STIGs", default:true},
+    {key:"open", label:"Open", default:true},
+    {key:"compliance", label:"% Compliant", default:true},
+    {key:"ip", label:"IP Address", default:false},
+    {key:"role", label:"Role", default:false},
+    {key:"total", label:"Total Rules", default:false},
+    {key:"notReviewed", label:"Not Reviewed", default:false}
+  ];
+  const STIG_COLS = [
+    {key:"title", label:"STIG Title", default:true, locked:true},
+    {key:"hostCount", label:"Host Count", default:true},
+    {key:"version", label:"Version", default:true},
+    {key:"open", label:"Open", default:true},
+    {key:"compliance", label:"% Compliant", default:true},
+    {key:"release", label:"Release Info", default:false},
+    {key:"total", label:"Total Rules", default:false},
+    {key:"notReviewed", label:"Not Reviewed", default:false}
+  ];
+  const FINDING_COLS = [
+    {key:"id", label:"STIG ID", default:true, locked:true},
+    {key:"sev", label:"Severity", default:true},
+    {key:"status", label:"Status", default:true},
+    {key:"title", label:"Rule Title", default:true},
+    {key:"source", label:"Source", default:true},
+    {key:"crit", label:"Criticality", default:false},
+    {key:"cci", label:"CCI", default:false}
+  ];
+  const COL_DEFS_BY_KEY = {assets:ASSET_COLS, stigs:STIG_COLS, findings:FINDING_COLS};
+  const colPrefs = {};
+  function getVisibleCols(prefKey, defs){
+    if(!colPrefs[prefKey]) colPrefs[prefKey] = new Set(defs.filter(d=>d.default).map(d=>d.key));
+    return colPrefs[prefKey];
+  }
+
+  // Dashboard blade — togglable panels, shown/hidden via the "Widgets ▾"
+  // picker in the top-right corner. Order here also controls render order.
+  const DASHBOARD_WIDGETS = [
+    {key:"ces", label:"CES Gauge", default:true},
+    {key:"tiles", label:"Summary Tiles", default:true},
+    {key:"aesTiles", label:"Assets by AES", default:true},
+    {key:"compliance", label:"Compliance by Category", default:true},
+    {key:"matrix", label:"ACR × CAT Matrix", default:true},
+    {key:"scatter", label:"AES vs. Finding Count", default:true},
+    {key:"pareto", label:"Risk Pareto (AES)", default:true}
+  ];
+  function widgetPickerHtml(bladeId){
+    return `<button type="button" class="colpicker-btn" data-action="widgetpicker-toggle" data-blade-id="${bladeId}">Widgets ▾</button>`;
+  }
+
+  function sortIcon(state, key){
+    if(state.sortKey !== key) return `<span class="sort-ico">⇅</span>`;
+    return `<span class="sort-ico active">${state.sortDir===1?"▲":"▼"}</span>`;
+  }
+
+  function colPickerHtml(prefKey, defs, bladeId, state){
+    // The menu itself is built and positioned by openColMenuFor() as a
+    // floating overlay appended to <body> — this only renders the trigger.
+    return `<button type="button" class="colpicker-btn" data-action="colpicker-toggle" data-blade-id="${bladeId}" data-pref-key="${prefKey}">Columns ▾</button>`;
+  }
+
+  function filterVulns(vulns, state){
+    let v = vulns.slice();
+    if(state.colFilters.status.size) v = v.filter(x=>state.colFilters.status.has(x.status));
+    if(state.colFilters.sev.size) v = v.filter(x=>state.colFilters.sev.has(x.severity));
+    if(state.colFilters.crit.size) v = v.filter(x=>state.colFilters.crit.has(x._criticality));
+    if(state.colFilters.source.size) v = v.filter(x=>state.colFilters.source.has(x._sourceLabel));
+    if(state.colFilters.acr && state.colFilters.acr.size) v = v.filter(x=>state.colFilters.acr.has(x._acrBand));
+    if(state.search){
+      const t = state.search.toLowerCase();
+      v = v.filter(x =>
+        (x.ruleTitle||"").toLowerCase().includes(t) ||
+        (x.ruleVer||"").toLowerCase().includes(t) ||
+        (x.vulnNum||"").toLowerCase().includes(t) ||
+        (x.groupTitle||"").toLowerCase().includes(t) ||
+        (x._sourceLabel||"").toLowerCase().includes(t)
+      );
+    }
+    const sevRank = {high:0, medium:1, low:2};
+    const statRank = {Open:0, Not_Reviewed:1, NotAFinding:2, Not_Applicable:3};
+    const critRank = {C:0,H:1,M:2,L:3};
+    v.sort((a,b)=>{
+      let r = 0;
+      if(state.sortKey==="sev") r = sevRank[a.severity]-sevRank[b.severity];
+      else if(state.sortKey==="status") r = statRank[a.status]-statRank[b.status];
+      else if(state.sortKey==="id") r = (a.ruleVer||"").localeCompare(b.ruleVer||"");
+      else if(state.sortKey==="title") r = (a.ruleTitle||"").localeCompare(b.ruleTitle||"");
+      else if(state.sortKey==="crit") r = (critRank[a._criticality]??9)-(critRank[b._criticality]??9);
+      else if(state.sortKey==="source") r = (a._sourceLabel||"").localeCompare(b._sourceLabel||"");
+      else if(state.sortKey==="cci") r = (a.cci||"").localeCompare(b.cci||"");
+      return r * state.sortDir;
+    });
+    return v;
+  }
+
+  function exportCSV(vulns, label){
+    const rows = [["Source File","STIG ID","Vuln ID","Severity","Status","Criticality","Rule Title","CCI","Comments"]];
+    vulns.forEach(v=>{
+      rows.push([v._sourceLabel||"", v.ruleVer, v.vulnNum, SEV_LABEL[v.severity]||v.severity, STATUS_LABEL[v.status]||v.status, v._criticality||"", v.ruleTitle, v.cci, (v.comments||"").replace(/\n/g," ")]);
+    });
+    const csv = rows.map(r => r.map(c => '"' + String(c||"").replace(/"/g,'""') + '"').join(",")).join("\r\n");
+    const blob = new Blob([csv], {type:"text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = label + "_findings.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function controlsHtml(bladeId, state, colDefs, prefKey){
+    return `
+      <div class="controls">
+        <input class="search-input" data-blade-id="${bladeId}" data-action="search" type="text" placeholder="Search rule title, STIG ID, group..." value="${esc(state.search)}">
+        <button class="export-btn" data-blade-id="${bladeId}" data-action="export">↓ export CSV</button>
+        ${colPickerHtml(prefKey, colDefs, bladeId, state)}
+      </div>`;
+  }
+
+  const FINDING_FILTER_OPTIONS = {
+    status: [["Open","Open"],["Not_Reviewed","Not Reviewed"],["NotAFinding","Not a Finding"],["Not_Applicable","Not Applicable"]],
+    sev: [["high","CAT I"],["medium","CAT II"],["low","CAT III"]],
+    crit: [["C","Critical"],["H","High"],["M","Medium"],["L","Low"]]
+  };
+
+  function thCellHtml(blade, key, label, opts){
+    opts = opts || {};
+    const sortPart = sortIcon(blade.state, key);
+    const labelHtml = `<span class="th-label" data-blade-id="${blade.id}" data-action="sort" data-key="${key}">${esc(label)}${sortPart}</span>`;
+    let filterBtn = "";
+    if(opts.filterKey){
+      const active = blade.state.colFilters[opts.filterKey] && blade.state.colFilters[opts.filterKey].size > 0;
+      filterBtn = `<button type="button" class="col-filter-btn ${active?'active':''}" data-action="col-filter-toggle" data-blade-id="${blade.id}" data-filter-key="${opts.filterKey}" data-options='${esc(JSON.stringify(opts.filterOptions||[]))}' title="Filter">▾</button>`;
+    }
+    return `<th><div class="th-inner">${labelHtml}${filterBtn}</div></th>`;
+  }
+
+  function findingsTableHtml(blade, vulns, showSource, sourceOptions, sourceLabel, sourceFilterable){
+    const prefKey = "findings";
+    const defs = FINDING_COLS.filter(d=> d.key!=="source" || showSource)
+      .map(d=> (d.key==="source" && sourceLabel) ? Object.assign({}, d, {label:sourceLabel}) : d);
+    const vis = getVisibleCols(prefKey, FINDING_COLS);
+    blade._lastVulns = vulns;
+    const activeId = blade.state.activeVulnId;
+    const visibleDefs = defs.filter(d=>vis.has(d.key));
+    const FILTERABLE = Object.assign({}, FINDING_FILTER_OPTIONS,
+      sourceFilterable === false ? {} : {source: (sourceOptions||[]).map(s=>[s,s])}
+    );
+    const header = visibleDefs.map(d=>{
+      const filterKey = FILTERABLE[d.key] ? d.key : null;
+      return thCellHtml(blade, d.key, d.label, {filterKey, filterOptions: filterKey ? FILTERABLE[filterKey] : null});
+    }).join("");
+    const rowsHtml = vulns.length === 0
+      ? `<tr class="empty-row"><td colspan="${Math.max(1,visibleDefs.length)}">no findings match the current filters</td></tr>`
+      : vulns.map(v=>{
+          const active = activeId === v.id;
+          const cells = visibleDefs.map(d=>{
+            switch(d.key){
+              case "id": return `<td class="id">${esc(v.ruleVer||v.vulnNum)}</td>`;
+              case "sev": return `<td class="sev"><span class="sev-tag ${SEV_CLASS[v.severity]||"c2"}">${SEV_LABEL[v.severity]||v.severity}</span></td>`;
+              case "status": return `<td><span class="status-pill ${v.status}">${STATUS_LABEL[v.status]}</span></td>`;
+              case "title": return `<td class="title">${esc(v.ruleTitle)}</td>`;
+              case "crit": return `<td>${v._criticality?critBadgeHtml(v._criticality):"—"}</td>`;
+              case "source": return `<td class="src">${esc(v._sourceLabel||"")}</td>`;
+              case "cci": return `<td class="src">${esc(v.cci||"—")}</td>`;
+              default: return `<td></td>`;
+            }
+          }).join("");
+          return `<tr data-blade-id="${blade.id}" data-action="drill-finding" data-vuln-id="${v.id}" class="${active?'active-row':''}">${cells}</tr>`;
+        }).join("");
+    return `
+      <div class="tablewrap">
+        <table>
+          <thead><tr>${header}</tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+      <div class="count-note">showing ${vulns.length} rules</div>`;
+  }
+
+  // ---- Blade factory / navigation ----
+  function newBlade(type, title, params){
+    bladeSeq++;
+    params = params || {};
+    let sortKey = "sev";
+    if(type === "assets") sortKey = "name";
+    else if(type === "stigs") sortKey = "title";
+    else if(type === "import") sortKey = "file";
+    const state = {
+      search: "",
+      sortKey, sortDir: 1,
+      colFilters: {
+        status: params.presetStatus ? new Set([params.presetStatus]) : new Set(),
+        sev: params.presetSev ? new Set([params.presetSev]) : new Set(),
+        crit: params.presetCrit ? new Set([params.presetCrit]) : new Set(),
+        source: new Set(),
+        acr: params.presetAcrBand ? new Set([params.presetAcrBand]) : new Set(),
+        aes: params.presetAES ? new Set([params.presetAES]) : new Set(),
+        hasOpen: new Set()
+      },
+      widgetVis: type === "dashboard" ? new Set(DASHBOARD_WIDGETS.filter(w=>w.default).map(w=>w.key)) : new Set(),
+      activeVulnId: null
+    };
+    return {id:"blade"+bladeSeq, type, title, params, state};
+  }
+
+  function bladeWidthClass(type){
+    if(type === "import") return "blade-w-auto";
+    if(type === "findingDetail" || type === "changelog" || type === "changelogDetail") return "blade-w-md";
+    return "blade-w-lg"; // dashboard, assets, assetDetail, stigs, findings, stigDetail
+  }
+
+  function groupAssetsByHost(){
+    const map = new Map();
+    assets.forEach(a=>{
+      const key = a.hostName || a.fileName;
+      if(!map.has(key)) map.set(key, {hostKey:key, hostName:a.hostName||key, hostIp:a.hostIp, role:a.role, stigs:[]});
+      map.get(key).stigs.push(a);
+    });
+    return Array.from(map.values());
+  }
+
+  function buildAssetRow(host){
+    let total=0, open=0, nr=0, naf=0, na=0;
+    host.stigs.forEach(a=>a.vulns.forEach(v=>{
+      total++;
+      if(v.status==="Open") open++;
+      else if(v.status==="Not_Reviewed") nr++;
+      else if(v.status==="NotAFinding") naf++;
+      else na++;
+    }));
+    const compliance = total ? Math.round(((naf+na)/total)*100) : 100;
+    const acrInfo = getACR(host.hostKey, host);
+    const aesInfo = computeAES(host, acrInfo.value);
+    return {host, total, open, nr, naf, na, compliance, acr:acrInfo.value, acrOverride:acrInfo.isOverride, aes:aesInfo.aes};
+  }
+
+  function filterAssetRows(rows, state){
+    let r = rows;
+    if(state.colFilters.aes && state.colFilters.aes.size) r = r.filter(x=>state.colFilters.aes.has(aesBand(x.aes)));
+    if(state.colFilters.acr && state.colFilters.acr.size) r = r.filter(x=>state.colFilters.acr.has(acrBand(x.acr)));
+    if(state.search){
+      const t = state.search.toLowerCase();
+      r = r.filter(x=> (x.host.hostName||"").toLowerCase().includes(t) || (x.host.hostIp||"").toLowerCase().includes(t) || (x.host.role||"").toLowerCase().includes(t));
+    }
+    return r;
+  }
+
+  function sortAssetRows(rows, state){
+    const dir = state.sortDir;
+    rows.sort((a,b)=>{
+      switch(state.sortKey){
+        case "name": return (a.host.hostName||"").localeCompare(b.host.hostName||"")*dir;
+        case "acr": return (a.acr-b.acr)*dir;
+        case "aes": return (a.aes-b.aes)*dir;
+        case "stigCount": return (a.host.stigs.length-b.host.stigs.length)*dir;
+        case "total": return (a.total-b.total)*dir;
+        case "open": return (a.open-b.open)*dir;
+        case "notReviewed": return (a.nr-b.nr)*dir;
+        case "compliance": return (a.compliance-b.compliance)*dir;
+        case "ip": return (a.host.hostIp||"").localeCompare(b.host.hostIp||"")*dir;
+        case "role": return (a.host.role||"").localeCompare(b.host.role||"")*dir;
+        default: return 0;
+      }
+    });
+    return rows;
+  }
+
+  function assetsControlsHtml(bladeId, state, defs){
+    return `<div class="controls">
+      <input class="search-input" data-blade-id="${bladeId}" data-action="search" type="text" placeholder="Search host, IP, role..." value="${esc(state.search)}">
+      <button type="button" class="colpicker-btn tooltip" data-action="upload-acr-csv" data-tip="Upload a CSV with columns: hostname, acr (1–10). Matching hosts' ACR will be overridden; unmatched hostnames and invalid values are reported after upload.">↑ ACR Overrides (CSV)</button>
+      ${colPickerHtml("assets", defs, bladeId, state)}
+    </div>`;
+  }
+
+  function buildStigRow(a){
+    const {stats} = computeStats(a.vulns);
+    const total = a.vulns.length;
+    const compliance = total ? Math.round(((stats.NotAFinding+stats.Not_Applicable)/total)*100) : 100;
+    return {asset:a, total, open:stats.Open, nr:stats.Not_Reviewed, naf:stats.NotAFinding, na:stats.Not_Applicable, compliance};
+  }
+
+  // Buckets a STIG row into one of three mutually-exclusive states for the
+  // "Open" column's Excel-style filter menu (replaces the old Has Open /
+  // Fully Closed chip pair, and additionally distinguishes rows that have
+  // no Open findings but still have Not Reviewed ones).
+  function stigOpenBucket(row){
+    if(row.open > 0) return "hasOpen";
+    if(row.nr > 0) return "pendingReview";
+    return "fullyClosed";
+  }
+  const STIG_HASOPEN_FILTER_OPTIONS = [["hasOpen","Has Open"],["pendingReview","Pending Review"],["fullyClosed","Fully Closed"]];
+
+  function filterStigRows(rows, state){
+    let r = rows;
+    if(state.colFilters.hasOpen && state.colFilters.hasOpen.size){
+      r = r.filter(x=>state.colFilters.hasOpen.has(stigOpenBucket(x)));
+    }
+    if(state.search){
+      const t = state.search.toLowerCase();
+      r = r.filter(x=> (x.asset.stigTitle||"").toLowerCase().includes(t) || (x.asset.hostName||"").toLowerCase().includes(t) || (x.asset.stigVersion||"").toLowerCase().includes(t));
+    }
+    return r;
+  }
+
+  function sortStigRows(rows, state){
+    const dir = state.sortDir;
+    rows.sort((a,b)=>{
+      switch(state.sortKey){
+        case "title": return (a.asset.stigTitle||"").localeCompare(b.asset.stigTitle||"")*dir;
+        case "hostCount": return ((a.hostCount||0)-(b.hostCount||0))*dir;
+        case "version": return (a.asset.stigVersion||"").localeCompare(b.asset.stigVersion||"")*dir;
+        case "release": return (a.asset.releaseInfo||"").localeCompare(b.asset.releaseInfo||"")*dir;
+        case "total": return (a.total-b.total)*dir;
+        case "open": return (a.open-b.open)*dir;
+        case "notReviewed": return (a.nr-b.nr)*dir;
+        case "compliance": return (a.compliance-b.compliance)*dir;
+        default: return 0;
+      }
+    });
+    return rows;
+  }
+
+  function stigsControlsHtml(bladeId, state, defs){
+    return `<div class="controls">
+      <input class="search-input" data-blade-id="${bladeId}" data-action="search" type="text" placeholder="Search STIG title, host, version..." value="${esc(state.search)}">
+      ${colPickerHtml("stigs", defs, bladeId, state)}
+    </div>`;
+  }
+
+  // ---- Blade content renderers ----
+  function renderDashboard(blade, bladeIndex){
+    const allVulns = [];
+    assets.forEach(a => a.vulns.forEach(v => allVulns.push(v)));
+    const hosts = groupAssetsByHost();
+    const rows = hosts.map(buildAssetRow);
+    const {stats} = computeStats(allVulns);
+    const vis = blade.state.widgetVis;
+    return `
+      <div class="dash-widgets-bar">${widgetPickerHtml(blade.id)}</div>
+      <div class="blade-meta">
+        <span>Files loaded: <b>${assets.length}</b></span>
+        <span>Assets: <b>${hosts.length}</b></span>
+        <span>Total rules: <b>${allVulns.length}</b></span>
+      </div>
+      ${vis.has("ces") ? `<div style="margin-top:12px;">${cesPanelHtml(rows)}</div>` : ""}
+      ${vis.has("tiles") ? dashboardTilesHtml(bladeIndex, stats, hosts.length) : ""}
+      ${vis.has("aesTiles") ? aesTilesHtml(bladeIndex, rows) : ""}
+      ${vis.has("compliance") ? complianceBarsHtml(allVulns) : ""}
+      ${vis.has("matrix") ? `<div class="matrix-row">
+        ${acrCatMatrixHtml(bladeIndex, rows)}
+        ${critSummaryHtml(bladeIndex, rows)}
+      </div>` : ""}
+      ${vis.has("scatter") ? scatterPanelHtml(rows, bladeIndex) : ""}
+      ${vis.has("pareto") ? paretoPanelHtml(rows, bladeIndex) : ""}`;
+  }
+
+  function renderAssetsList(blade, bladeIndex){
+    const hosts = groupAssetsByHost();
+    if(!hosts.length) return `<div class="empty-note">no assets loaded yet</div>`;
+    let rows = hosts.map(buildAssetRow);
+    rows = filterAssetRows(rows, blade.state);
+    rows = sortAssetRows(rows, blade.state);
+    const defs = ASSET_COLS;
+    const vis = getVisibleCols("assets", defs);
+    const visibleDefs = defs.filter(d=>vis.has(d.key));
+    const ACR_FILTER_OPTIONS = [["9-10","9-10"],["7-8","7-8"],["4-6","4-6"],["1-3","1-3"]];
+    const AES_FILTER_OPTIONS = [["Critical","Critical"],["High","High"],["Medium","Medium"],["Low","Low"]];
+    const header = visibleDefs.map(d=>{
+      if(d.key === "acr") return thCellHtml(blade, "acr", d.label, {filterKey:"acr", filterOptions:ACR_FILTER_OPTIONS});
+      if(d.key === "aes") return thCellHtml(blade, "aes", d.label, {filterKey:"aes", filterOptions:AES_FILTER_OPTIONS});
+      return `<th data-blade-id="${blade.id}" data-action="sort" data-key="${d.key}">${esc(d.label)}${sortIcon(blade.state,d.key)}</th>`;
+    }).join("");
+    const bodyRows = rows.length===0 ? `<tr class="empty-row"><td colspan="${Math.max(1,visibleDefs.length)}">no assets match the current filters</td></tr>` :
+      rows.map(r=>{
+        const cells = visibleDefs.map(d=>{
+          switch(d.key){
+            case "name": return `<td class="title">${esc(r.host.hostName)}</td>`;
+            case "acr": return `<td>${acrBadgeHtml(r.host.hostKey, r.host)}</td>`;
+            case "aes": return `<td>${aesBadgeHtml(r.aes)}</td>`;
+            case "ip": return `<td class="src">${esc(r.host.hostIp||"—")}</td>`;
+            case "role": return `<td class="src">${esc(r.host.role||"—")}</td>`;
+            case "stigCount": return `<td>${r.host.stigs.length}</td>`;
+            case "total": return `<td>${r.total}</td>`;
+            case "open": return `<td><span class="status-pill Open">${r.open}</span></td>`;
+            case "notReviewed": return `<td><span class="status-pill Not_Reviewed">${r.nr}</span></td>`;
+            case "compliance": return `<td>${r.compliance}%</td>`;
+            default: return `<td></td>`;
+          }
+        }).join("");
+        return `<tr data-action="drill" data-blade-index="${bladeIndex}" data-type="assetDetail" data-title="${esc(r.host.hostName)}" data-hostkey="${esc(r.host.hostKey)}">${cells}</tr>`;
+      }).join("");
+    return `
+      ${assetsControlsHtml(blade.id, blade.state, defs)}
+      <div class="tablewrap"><table><thead><tr>${header}</tr></thead><tbody>${bodyRows}</tbody></table></div>
+      <div class="count-note">showing ${rows.length} of ${hosts.length} assets</div>`;
+  }
+
+  function renderAssetDetail(blade, bladeIndex){
+    const hosts = groupAssetsByHost();
+    const host = hosts.find(h => h.hostKey === blade.params.hostKey);
+    if(!host) return `<div class="empty-note">asset not found — it may have been removed</div>`;
+    const acrInfo = getACR(host.hostKey, host);
+    const aesInfo = computeAES(host, acrInfo.value);
+
+    const vulns = [];
+    host.stigs.forEach(a=>{
+      a.vulns.forEach(v=> vulns.push(Object.assign({}, v, {
+        _sourceLabel: a.stigTitle || a.fileName, _sourceAssetId: a.id,
+        _criticality: findingCriticality(acrInfo.value, v.severity), _acrBand: acrBand(acrInfo.value)
+      })));
+    });
+
+    const filtered = filterVulns(vulns, blade.state);
+    const defs = FINDING_COLS;
+    const sourceOptions = Array.from(new Set(vulns.map(v=>v._sourceLabel).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+
+    return `
+      <div class="asset-score-row">
+        <div class="score-block">
+          <div class="score-label">ACR (Asset Criticality Rating)</div>
+          ${acrBadgeHtml(host.hostKey, host)}
+          <select class="acr-override" data-action="set-acr-override" data-hostkey="${esc(host.hostKey)}">
+            <option value="auto" ${!acrInfo.isOverride?"selected":""}>Auto (${acrInfo.auto})</option>
+            ${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option value="${n}" ${acrInfo.isOverride&&acrInfo.value===n?"selected":""}>Override: ${n}</option>`).join("")}
+          </select>
+        </div>
+        <div class="score-block">
+          <div class="score-label">AES (Asset Exposure Score)</div>
+          ${aesBadgeHtml(aesInfo.aes)}
+        </div>
+      </div>
+      <div class="blade-meta">
+        ${host.hostIp ? `<span>IP: <b>${esc(host.hostIp)}</b></span>` : ""}
+        ${host.role ? `<span>Role: <b>${esc(host.role)}</b></span>` : ""}
+        <span>STIGs applied: <b>${host.stigs.length}</b></span>
+      </div>
+      <div style="margin-top:10px;">${complianceBlockHtml(vulns)}</div>
+      ${controlsHtml(blade.id, blade.state, defs, "findings")}
+      ${findingsTableHtml(blade, filtered, true, sourceOptions)}`;
+  }
+
+  function renderStigsList(blade, bladeIndex){
+    if(!assets.length) return `<div class="empty-note">no STIG files loaded yet</div>`;
+    const hostCountMap = new Map();
+    assets.forEach(a=>{
+      const key = a.stigTitle || a.fileName;
+      if(!hostCountMap.has(key)) hostCountMap.set(key, new Set());
+      hostCountMap.get(key).add(a.hostName || a.fileName);
+    });
+    let rows = assets.map(a => Object.assign(buildStigRow(a), {hostCount: hostCountMap.get(a.stigTitle||a.fileName).size}));
+    rows = filterStigRows(rows, blade.state);
+    rows = sortStigRows(rows, blade.state);
+    const defs = STIG_COLS;
+    const vis = getVisibleCols("stigs", defs);
+    const visibleDefs = defs.filter(d=>vis.has(d.key));
+    const header = visibleDefs.map(d=>{
+      if(d.key === "open") return thCellHtml(blade, "open", d.label, {filterKey:"hasOpen", filterOptions:STIG_HASOPEN_FILTER_OPTIONS});
+      return `<th data-blade-id="${blade.id}" data-action="sort" data-key="${d.key}">${esc(d.label)}${sortIcon(blade.state,d.key)}</th>`;
+    }).join("");
+    const bodyRows = rows.length===0 ? `<tr class="empty-row"><td colspan="${Math.max(1,visibleDefs.length)}">no STIGs match the current filters</td></tr>` :
+      rows.map(r=>{
+        const a = r.asset;
+        const cells = visibleDefs.map(d=>{
+          switch(d.key){
+            case "title": return `<td class="title">${esc(a.stigTitle||"Untitled STIG")}</td>`;
+            case "hostCount": return `<td title="${esc(Array.from(hostCountMap.get(a.stigTitle||a.fileName)).join(', '))}">${r.hostCount}</td>`;
+            case "version": return `<td class="src">${esc(a.stigVersion||"—")}</td>`;
+            case "release": return `<td class="src">${esc(a.releaseInfo||"—")}</td>`;
+            case "total": return `<td>${r.total}</td>`;
+            case "open": return `<td><span class="status-pill Open">${r.open}</span></td>`;
+            case "notReviewed": return `<td><span class="status-pill Not_Reviewed">${r.nr}</span></td>`;
+            case "compliance": return `<td>${r.compliance}%</td>`;
+            default: return `<td></td>`;
+          }
+        }).join("");
+        return `<tr data-action="drill" data-blade-index="${bladeIndex}" data-type="stigDetail" data-title="${esc(a.stigTitle||a.fileName)}" data-stig-key="${esc(a.stigTitle||a.fileName)}">${cells}</tr>`;
+      }).join("");
+    return `
+      ${stigsControlsHtml(blade.id, blade.state, defs)}
+      <div class="tablewrap"><table><thead><tr>${header}</tr></thead><tbody>${bodyRows}</tbody></table></div>
+      <div class="count-note">showing ${rows.length} of ${assets.length} STIGs</div>`;
+  }
+
+  function renderStigDetail(blade, bladeIndex){
+    const stigKey = blade.params.stigKey;
+    const matches = assets.filter(a => (a.stigTitle||a.fileName) === stigKey);
+    if(!matches.length) return `<div class="empty-note">STIG not found — it may have been removed</div>`;
+    const hostsMap = new Map(groupAssetsByHost().map(h=>[h.hostKey, h]));
+    const vulns = [];
+    matches.forEach(a=>{
+      const hostKey = a.hostName || a.fileName;
+      const hostRec = hostsMap.get(hostKey);
+      const acrVal = hostRec ? getACR(hostKey, hostRec).value : 5;
+      a.vulns.forEach(v=> vulns.push(Object.assign({}, v, {
+        _sourceLabel: a.hostName || a.fileName, _sourceAssetId: a.id,
+        _criticality: findingCriticality(acrVal, v.severity), _acrBand: acrBand(acrVal)
+      })));
+    });
+    const filtered = filterVulns(vulns, blade.state);
+    const defs = FINDING_COLS;
+    const first = matches[0];
+    const hostCount = new Set(matches.map(a=>a.hostName||a.fileName)).size;
+    return `
+      <div class="blade-meta">
+        <span>Version: <b>${esc(first.stigVersion||"—")}</b>${first.releaseInfo ? " ("+esc(first.releaseInfo)+")" : ""}</span>
+        <span>Assets evaluated: <b>${hostCount}</b></span>
+        <span>Total rules: <b>${vulns.length}</b></span>
+      </div>
+      <div style="margin-top:16px;">${complianceBlockHtml(vulns)}</div>
+      ${controlsHtml(blade.id, blade.state, defs, "findings")}
+      ${findingsTableHtml(blade, filtered, true, undefined, "Assets", false)}`;
+  }
+
+  function renderFindingsList(blade, bladeIndex){
+    const hostsMap = new Map(groupAssetsByHost().map(h=>[h.hostKey, h]));
+    const vulns = [];
+    assets.forEach(a=>{
+      const hostKey = a.hostName || a.fileName;
+      const hostRec = hostsMap.get(hostKey);
+      const acrVal = hostRec ? getACR(hostKey, hostRec).value : 5;
+      a.vulns.forEach(v=> vulns.push(Object.assign({}, v, {
+        _sourceLabel:(a.hostName||a.fileName), _sourceAssetId:a.id,
+        _criticality: findingCriticality(acrVal, v.severity), _acrBand: acrBand(acrVal)
+      })));
+    });
+
+    const filtered = filterVulns(vulns, blade.state);
+    const defs = FINDING_COLS;
+    const sourceOptions = Array.from(new Set(vulns.map(v=>v._sourceLabel).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+
+    return `
+      <div class="blade-meta"><span>Total rules: <b>${vulns.length}</b></span></div>
+      <div style="margin-top:6px;">${complianceBlockHtml(vulns)}</div>
+      ${controlsHtml(blade.id, blade.state, defs, "findings")}
+      ${findingsTableHtml(blade, filtered, true, sourceOptions)}`;
+  }
+
+  function renderFindingDetail(blade){
+    const v = blade.params.vuln;
+    return `
+      <div class="fd-tags">
+        <span class="sev-tag ${SEV_CLASS[v.severity]||"c2"}">${SEV_LABEL[v.severity]||v.severity}</span>
+        <span class="status-pill ${v.status}">${STATUS_LABEL[v.status]}</span>
+        ${v._criticality ? critBadgeHtml(v._criticality) : ""}
+      </div>
+      <div class="fd-body">
+        <h4>Group</h4><pre>${esc(v.groupTitle) || "—"}</pre>
+        <h4>Discussion</h4><pre>${esc(v.discussion) || "—"}</pre>
+        <h4>Check</h4><pre>${esc(v.checkContent) || "—"}</pre>
+        <h4>Fix</h4><pre>${esc(v.fixText) || "—"}</pre>
+        ${v.findingDetails ? `<h4>Finding Details</h4><pre>${esc(v.findingDetails)}</pre>` : ""}
+        ${v.comments ? `<h4>Comments</h4><pre class="comments">${esc(v.comments)}</pre>` : ""}
+        ${v.cci ? `<h4>CCI</h4><pre>${esc(v.cci)}</pre>` : ""}
+      </div>`;
+  }
+
+  function sortImportRows(rows, state){
+    const dir = state.sortDir;
+    rows.sort((a,b)=>{
+      switch(state.sortKey){
+        case "host": return (a.hostName||"").localeCompare(b.hostName||"")*dir;
+        case "stig": return (a.stigTitle||"").localeCompare(b.stigTitle||"")*dir;
+        case "rules": return (a.vulns.length-b.vulns.length)*dir;
+        case "file": default: return (a.fileName||"").localeCompare(b.fileName||"")*dir;
+      }
+    });
+    return rows;
+  }
+
+  function renderImport(blade){
+    const addBtn = `<button class="import-add" data-action="add-files">+ Add ${assets.length ? "more " : ""}CKL / CKLB files</button>`;
+    if(!assets.length){
+      return `${addBtn}<div class="empty-note">no files loaded yet</div>`;
+    }
+    const rows = sortImportRows(assets.slice(), blade.state);
+    const cols = [["file","File"],["host","Host"],["stig","STIG"],["rules","Rules"]];
+    const header = cols.map(([key,label])=>
+      `<th data-blade-id="${blade.id}" data-action="sort" data-key="${key}">${esc(label)}${sortIcon(blade.state,key)}</th>`
+    ).join("") + `<th></th>`;
+    const bodyRows = rows.map(a => `
+      <tr class="no-click">
+        <td class="title" title="${esc(a.fileName)}">${esc(a.fileName)}</td>
+        <td class="src" title="${esc(a.hostName||"—")}">${esc(a.hostName||"—")}</td>
+        <td class="src" title="${esc(a.stigTitle||"—")}">${esc(a.stigTitle||"—")}</td>
+        <td>${a.vulns.length}</td>
+        <td><button class="import-remove" data-action="remove-asset" data-asset-id="${esc(a.id)}" title="Remove">&times;</button></td>
+      </tr>`).join("");
+    return `
+      ${addBtn}
+      <div class="tablewrap" style="margin-top:12px;">
+        <table class="import-table">
+          <thead><tr>${header}</tr></thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  function renderChangelog(blade, bladeIndex){
+    const rows = CHANGELOG.map((c,i) => `
+      <tr data-action="drill" data-blade-index="${bladeIndex}" data-type="changelogDetail" data-title="Version ${esc(c.version)}" data-changelog-index="${i}">
+        <td class="src">${esc(c.date)}</td>
+        <td class="title">${esc(c.version)}</td>
+        <td>${esc(c.notes)}</td>
+      </tr>`).join("");
+    return `
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Release Date</th><th>Version</th><th>Notes</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  function renderChangelogDetail(blade){
+    const c = CHANGELOG[blade.params.changelogIndex];
+    if(!c) return `<div class="empty-note">release not found</div>`;
+    return `
+      <div class="blade-meta">
+        <span>Version: <b>${esc(c.version)}</b></span>
+        <span>Released: <b>${esc(c.date)}</b></span>
+      </div>
+      <ul class="changelog-notes"><li>${esc(c.notes)}</li></ul>`;
+  }
+
+  function bladeHeaderHtml(blade, bladeIndex){
+    let eyebrow = "";
+    if(blade.type === "assetDetail") eyebrow = "Asset";
+    else if(blade.type === "stigDetail") eyebrow = "STIG";
+    else if(blade.type === "findingDetail") eyebrow = "Finding";
+    else if(blade.type === "assets") eyebrow = "Browse";
+    else if(blade.type === "stigs") eyebrow = "Browse";
+    else if(blade.type === "findings") eyebrow = "Browse";
+    else if(blade.type === "changelog") eyebrow = "About";
+    else if(blade.type === "changelogDetail") eyebrow = "Release";
+    return `
+      <div class="blade-header">
+        <div class="bh-top">
+          <div>${eyebrow ? `<div class="eyebrow">${esc(eyebrow)}</div>` : ""}<h2>${esc(blade.title)}</h2></div>
+          <button class="blade-close" data-action="close-blade" data-depth="${bladeIndex}" title="Close">&times;</button>
+        </div>
+      </div>`;
+  }
+
+  function bladeBodyHtml(blade, bladeIndex){
+    switch(blade.type){
+      case "dashboard": return renderDashboard(blade, bladeIndex);
+      case "assets": return renderAssetsList(blade, bladeIndex);
+      case "assetDetail": return renderAssetDetail(blade, bladeIndex);
+      case "stigs": return renderStigsList(blade, bladeIndex);
+      case "stigDetail": return renderStigDetail(blade, bladeIndex);
+      case "findings": return renderFindingsList(blade, bladeIndex);
+      case "findingDetail": return renderFindingDetail(blade);
+      case "import": return renderImport(blade);
+      case "changelog": return renderChangelog(blade, bladeIndex);
+      case "changelogDetail": return renderChangelogDetail(blade);
+      default: return "";
+    }
+  }
+
+  // ==================================================================
+  // Requirement 5 — targeted rendering: only the affected blade
+  // refreshes; other open blades keep their scroll position untouched.
+  // ==================================================================
+
+  function updateShellChrome(){
+    const hasAssets = assets.length > 0;
+    $("#emptyStage").style.display = hasAssets ? "none" : "flex";
+    $("#portal").style.display = hasAssets ? "flex" : "none";
+    $("#addMoreBtn").style.display = hasAssets ? "inline-block" : "none";
+
+    const allVulnsCount = assets.reduce((s,a)=>s+a.vulns.length,0);
+    $("#ledgerStatus").innerHTML = hasAssets
+      ? `<span class="prompt">$</span> ${assets.length} STIG file${assets.length>1?"s":""} loaded`
+      : `<span class="prompt">$</span> awaiting file<span class="cursor-inline">_</span>`;
+
+    if(!hasAssets) return;
+
+    $("#railCountAssets").textContent = groupAssetsByHost().length;
+    $("#railCountStigs").textContent = assets.length;
+    $("#railCountFindings").textContent = allVulnsCount;
+
+    const rootMenu = bladeStack.length ? bladeStack[0].__menu : null;
+    $$(".rail-item").forEach(r => r.classList.toggle("active", r.dataset.menu === rootMenu));
+  }
+
+  function fullRebuildBladeStack(){
+    const sc = $("#bladeScroll");
+    sc.innerHTML = bladeStack.map((b, idx) => `
+      <div class="blade ${bladeWidthClass(b.type)}" data-blade-id="${b.id}">
+        ${bladeHeaderHtml(b, idx)}
+        <div class="blade-body">${bladeBodyHtml(b, idx)}</div>
+      </div>`).join("");
+  }
+
+  // Reconciles the blade DOM with bladeStack without touching nodes that
+  // already exist — this is what keeps unrelated blades from losing their
+  // scroll position when a sibling blade opens, closes, or changes.
+  function syncBladeStack(){
+    const container = $("#bladeScroll");
+    const wantIds = bladeStack.map(b=>b.id);
+    Array.from(container.children).forEach(el=>{
+      if(!wantIds.includes(el.dataset.bladeId)) el.remove();
+    });
+    let prevEl = null;
+    bladeStack.forEach((b, idx)=>{
+      let el = container.querySelector(`[data-blade-id="${b.id}"]`);
+      if(!el){
+        el = document.createElement("div");
+        el.className = `blade ${bladeWidthClass(b.type)}`;
+        el.dataset.bladeId = b.id;
+        el.innerHTML = bladeHeaderHtml(b, idx) + `<div class="blade-body">${bladeBodyHtml(b, idx)}</div>`;
+        if(prevEl){
+          if(prevEl.nextSibling) container.insertBefore(el, prevEl.nextSibling);
+          else container.appendChild(el);
+        } else {
+          container.insertBefore(el, container.firstChild);
+        }
+      }
+      prevEl = el;
+    });
+  }
+
+  // Refreshes only one blade's body content — used for filter/sort/search/
+  // column changes so the rest of the interface never re-renders.
+  function refreshBlade(bladeId){
+    const idx = bladeStack.findIndex(b=>b.id===bladeId);
+    if(idx === -1) return;
+    const b = bladeStack[idx];
+    const el = document.querySelector(`[data-blade-id="${bladeId}"] .blade-body`);
+    if(el) el.innerHTML = bladeBodyHtml(b, idx);
+  }
+
+  function refreshDependentBlades(predicate){
+    bladeStack.forEach(b=>{ if(predicate(b)) refreshBlade(b.id); });
+  }
+
+  function goMenu(menu){
+    closeColMenu(); closeColFilterMenu(); closeWidgetMenu(); hideTooltip();
+    bladeStack = [];
+    const blade = newBlade(menu, MENU_TITLE[menu] || "Dashboard", {});
+    blade.__menu = menu;
+    bladeStack.push(blade);
+    updateShellChrome();
+    fullRebuildBladeStack();
+    requestAnimationFrame(()=>{
+      const sc = $("#bladeScroll");
+      if(sc) sc.scrollTo({left:0, behavior:"smooth"});
+    });
+  }
+
+  $$(".rail-item").forEach(item=>{
+    item.addEventListener("click", ()=> goMenu(item.dataset.menu));
+  });
+
+  function openBlade(depth, type, title, params){
+    closeColMenu(); closeColFilterMenu(); closeWidgetMenu(); hideTooltip();
+    bladeStack = bladeStack.slice(0, depth);
+    bladeStack.push(newBlade(type, title, params));
+    syncBladeStack();
+    requestAnimationFrame(()=>{
+      const sc = $("#bladeScroll");
+      if(sc) sc.scrollTo({left: sc.scrollWidth, behavior:"smooth"});
+    });
+  }
+
+  function closeBladeAt(depth){
+    closeColMenu(); closeColFilterMenu(); closeWidgetMenu(); hideTooltip();
+    bladeStack = bladeStack.slice(0, depth);
+    syncBladeStack();
+  }
+
+  // ---- Event delegation for everything inside the blade area ----
+  const bladeScroll = $("#bladeScroll");
+
+  // ==================================================================
+  // Floating overlays — tooltips and the column-picker menu are appended
+  // directly to <body> and positioned via getBoundingClientRect(), so
+  // neither is ever clipped by a blade's own overflow:auto/hidden.
+  // ==================================================================
+
+  let tooltipEl = null;
+  function hideTooltip(){ if(tooltipEl){ tooltipEl.remove(); tooltipEl = null; } }
+  function showTooltip(target){
+    const text = target.getAttribute("data-tip");
+    if(!text) return;
+    hideTooltip();
+    tooltipEl = document.createElement("div");
+    tooltipEl.className = "floating-tooltip";
+    tooltipEl.textContent = text;
+    tooltipEl._forEl = target;
+    document.body.appendChild(tooltipEl);
+    const r = target.getBoundingClientRect();
+    let left = r.left;
+    const tw = tooltipEl.offsetWidth, th = tooltipEl.offsetHeight;
+    if(left + tw > window.innerWidth - 10) left = window.innerWidth - tw - 10;
+    if(left < 6) left = 6;
+    let top = r.bottom + 8;
+    if(top + th > window.innerHeight - 10) top = r.top - th - 8;
+    if(top < 6) top = 6;
+    tooltipEl.style.left = left + "px";
+    tooltipEl.style.top = top + "px";
+  }
+  document.addEventListener("mouseover", e=>{
+    const t = e.target.closest(".tooltip[data-tip]");
+    if(!t || (tooltipEl && tooltipEl._forEl === t)) return;
+    showTooltip(t);
+  });
+  document.addEventListener("mouseout", e=>{
+    const t = e.target.closest(".tooltip[data-tip]");
+    if(!t || (e.relatedTarget && t.contains(e.relatedTarget))) return;
+    hideTooltip();
+  });
+  window.addEventListener("scroll", hideTooltip, true);
+  window.addEventListener("resize", hideTooltip);
+
+  let colMenuState = null; // {menuEl, btnEl, bladeId, prefKey}
+  function closeColMenu(){
+    if(!colMenuState) return;
+    if(colMenuState.btnEl) colMenuState.btnEl.classList.remove("open");
+    colMenuState.menuEl.remove();
+    colMenuState = null;
+  }
+  function positionColMenu(btnEl, menu){
+    const r = btnEl.getBoundingClientRect();
+    let left = r.right - menu.offsetWidth;
+    if(left < 6) left = 6;
+    let top = r.bottom + 6;
+    if(top + menu.offsetHeight > window.innerHeight - 10) top = r.top - menu.offsetHeight - 6;
+    if(top < 6) top = 6;
+    menu.style.left = left + "px";
+    menu.style.top = top + "px";
+  }
+  function openColMenuFor(btnEl){
+    const bladeId = btnEl.dataset.bladeId;
+    const prefKey = btnEl.dataset.prefKey;
+    const defs = COL_DEFS_BY_KEY[prefKey];
+    const vis = getVisibleCols(prefKey, defs);
+    const menu = document.createElement("div");
+    menu.className = "floating-colmenu";
+    menu.innerHTML = defs.map(d=>`<label class="colpicker-item"><input type="checkbox" data-action="toggle-col" data-blade-id="${bladeId}" data-pref-key="${prefKey}" data-col="${d.key}" ${vis.has(d.key)?"checked":""} ${d.locked?"disabled":""}> ${esc(d.label)}</label>`).join("");
+    document.body.appendChild(menu);
+    positionColMenu(btnEl, menu);
+    btnEl.classList.add("open");
+    colMenuState = {menuEl:menu, btnEl, bladeId, prefKey};
+
+    menu.addEventListener("click", e=> e.stopPropagation());
+    menu.addEventListener("change", e=>{
+      const colEl = e.target.closest('[data-action="toggle-col"]');
+      if(!colEl) return;
+      const pk = colEl.dataset.prefKey, key = colEl.dataset.col;
+      const ds = COL_DEFS_BY_KEY[pk];
+      const v = getVisibleCols(pk, ds);
+      if(v.has(key)) v.delete(key); else v.add(key);
+      const blade = bladeStack.find(b=>b.id===colEl.dataset.bladeId);
+      if(blade){
+        refreshBlade(blade.id);
+        // The blade body (and its Columns button) was just replaced —
+        // reattach the menu to the fresh button so it stays open and
+        // correctly positioned across further toggles.
+        const newBtn = document.querySelector(`[data-blade-id="${bladeId}"] [data-action="colpicker-toggle"][data-pref-key="${prefKey}"]`);
+        if(newBtn && colMenuState){
+          colMenuState.btnEl = newBtn;
+          newBtn.classList.add("open");
+          positionColMenu(newBtn, menu);
+        } else {
+          closeColMenu();
+        }
+      }
+    });
+  }
+  document.addEventListener("click", e=>{
+    if(!colMenuState) return;
+    if(colMenuState.menuEl.contains(e.target) || colMenuState.btnEl === e.target || (colMenuState.btnEl && colMenuState.btnEl.contains(e.target))) return;
+    closeColMenu();
+  });
+  document.addEventListener("keydown", e=>{ if(e.key === "Escape") closeColMenu(); });
+  window.addEventListener("resize", closeColMenu);
+  bladeScroll.addEventListener("scroll", closeColMenu, true);
+
+  // ==================================================================
+  // Dashboard "Widgets ▾" picker — same floating-overlay approach as the
+  // column picker above, but toggles which dashboard panels render at all
+  // rather than which table columns show. Visibility lives on the
+  // dashboard blade's own state.widgetVis Set.
+  // ==================================================================
+  let widgetMenuState = null; // {menuEl, btnEl, bladeId}
+  function closeWidgetMenu(){
+    if(!widgetMenuState) return;
+    if(widgetMenuState.btnEl) widgetMenuState.btnEl.classList.remove("open");
+    widgetMenuState.menuEl.remove();
+    widgetMenuState = null;
+  }
+  function openWidgetMenuFor(btnEl){
+    const bladeId = btnEl.dataset.bladeId;
+    const blade = bladeStack.find(b=>b.id===bladeId);
+    if(!blade) return;
+    const vis = blade.state.widgetVis;
+    const menu = document.createElement("div");
+    menu.className = "floating-colmenu";
+    menu.innerHTML = DASHBOARD_WIDGETS.map(w=>`<label class="colpicker-item"><input type="checkbox" data-action="toggle-widget" data-blade-id="${bladeId}" data-widget="${w.key}" ${vis.has(w.key)?"checked":""}> ${esc(w.label)}</label>`).join("");
+    document.body.appendChild(menu);
+    positionColMenu(btnEl, menu);
+    btnEl.classList.add("open");
+    widgetMenuState = {menuEl:menu, btnEl, bladeId};
+
+    menu.addEventListener("click", e=> e.stopPropagation());
+    menu.addEventListener("change", e=>{
+      const wEl = e.target.closest('[data-action="toggle-widget"]');
+      if(!wEl) return;
+      const b = bladeStack.find(x=>x.id===wEl.dataset.bladeId);
+      if(!b) return;
+      const key = wEl.dataset.widget;
+      if(b.state.widgetVis.has(key)) b.state.widgetVis.delete(key); else b.state.widgetVis.add(key);
+      refreshBlade(b.id);
+      // The blade body (and its Widgets button) was just replaced —
+      // reattach the menu to the fresh button so it stays open and
+      // correctly positioned across further toggles.
+      const newBtn = document.querySelector(`[data-blade-id="${bladeId}"] [data-action="widgetpicker-toggle"]`);
+      if(newBtn && widgetMenuState){
+        widgetMenuState.btnEl = newBtn;
+        newBtn.classList.add("open");
+        positionColMenu(newBtn, menu);
+      } else {
+        closeWidgetMenu();
+      }
+    });
+  }
+  document.addEventListener("click", e=>{
+    if(!widgetMenuState) return;
+    if(widgetMenuState.menuEl.contains(e.target) || widgetMenuState.btnEl === e.target || (widgetMenuState.btnEl && widgetMenuState.btnEl.contains(e.target))) return;
+    closeWidgetMenu();
+  });
+  document.addEventListener("keydown", e=>{ if(e.key === "Escape") closeWidgetMenu(); });
+  window.addEventListener("resize", closeWidgetMenu);
+  bladeScroll.addEventListener("scroll", closeWidgetMenu, true);
+
+  // ==================================================================
+  // Excel-style per-column filter menus (status / severity / criticality /
+  // source). Same floating-overlay approach as the column picker above —
+  // a Set per column in blade.state.colFilters; an empty Set means "no
+  // filter, show everything". Unchecking a box converts the implicit
+  // "everything" into an explicit set of everything-but-that-value so the
+  // simple size-based filterVulns() check keeps working unmodified.
+  // ==================================================================
+  let colFilterState = null; // {menuEl, btnEl, bladeId, filterKey}
+  function closeColFilterMenu(){
+    if(!colFilterState) return;
+    if(colFilterState.btnEl) colFilterState.btnEl.classList.remove("open");
+    colFilterState.menuEl.remove();
+    colFilterState = null;
+  }
+  function openColFilterMenuFor(btnEl){
+    const bladeId = btnEl.dataset.bladeId;
+    const filterKey = btnEl.dataset.filterKey;
+    const blade = bladeStack.find(b=>b.id===bladeId);
+    if(!blade) return;
+    let options;
+    try{ options = JSON.parse(btnEl.dataset.options || "[]"); }catch(e){ options = []; }
+    const selected = blade.state.colFilters[filterKey];
+
+    const menu = document.createElement("div");
+    menu.className = "floating-colmenu";
+    const clearDisabled = selected.size === 0;
+    menu.innerHTML = `
+      <div class="colfilter-clear ${clearDisabled?'disabled':''}" data-action="clear-col-filter" data-blade-id="${bladeId}" data-filter-key="${filterKey}">Clear filter</div>
+      <div class="colpicker-divider"></div>
+      ${options.map(([v,l])=>`<label class="colpicker-item"><input type="checkbox" data-action="filter-checkbox" data-blade-id="${bladeId}" data-filter-key="${filterKey}" data-value="${esc(v)}" data-all-values='${esc(JSON.stringify(options.map(o=>o[0])))}' ${(selected.size===0||selected.has(v))?"checked":""}> ${esc(l)}</label>`).join("")}
+    `;
+    if(!options.length){
+      menu.innerHTML += `<div class="empty-note" style="padding:8px 6px;">no values to filter</div>`;
+    }
+    document.body.appendChild(menu);
+    positionColMenu(btnEl, menu);
+    btnEl.classList.add("open");
+    colFilterState = {menuEl:menu, btnEl, bladeId, filterKey};
+
+    menu.addEventListener("click", e=>{
+      e.stopPropagation();
+      const clearEl = e.target.closest('[data-action="clear-col-filter"]');
+      if(clearEl && !clearEl.classList.contains("disabled")){
+        const b = bladeStack.find(x=>x.id===bladeId);
+        if(b){ b.state.colFilters[filterKey].clear(); refreshBlade(b.id); }
+        closeColFilterMenu();
+      }
+    });
+    menu.addEventListener("change", e=>{
+      const cb = e.target.closest('[data-action="filter-checkbox"]');
+      if(!cb) return;
+      const b = bladeStack.find(x=>x.id===bladeId);
+      if(!b) return;
+      const set = b.state.colFilters[filterKey];
+      const value = cb.dataset.value;
+      let allValues; try{ allValues = JSON.parse(cb.dataset.allValues||"[]"); }catch(e){ allValues = []; }
+      if(set.size === 0){ allValues.forEach(v=>set.add(v)); }
+      if(set.has(value)) set.delete(value); else set.add(value);
+      if(set.size === allValues.length) set.clear();
+      refreshBlade(b.id);
+      const clearEl = menu.querySelector('[data-action="clear-col-filter"]');
+      if(clearEl) clearEl.classList.toggle("disabled", set.size === 0);
+      const newBtn = document.querySelector(`[data-blade-id="${bladeId}"] [data-action="col-filter-toggle"][data-filter-key="${filterKey}"]`);
+      if(newBtn && colFilterState){
+        colFilterState.btnEl = newBtn;
+        newBtn.classList.add("open");
+        positionColMenu(newBtn, menu);
+      } else {
+        closeColFilterMenu();
+      }
+    });
+  }
+  document.addEventListener("click", e=>{
+    if(!colFilterState) return;
+    if(colFilterState.menuEl.contains(e.target) || colFilterState.btnEl === e.target || (colFilterState.btnEl && colFilterState.btnEl.contains(e.target))) return;
+    closeColFilterMenu();
+  });
+  document.addEventListener("keydown", e=>{ if(e.key === "Escape") closeColFilterMenu(); });
+  window.addEventListener("resize", closeColFilterMenu);
+  bladeScroll.addEventListener("scroll", closeColFilterMenu, true);
+
+  bladeScroll.addEventListener("click", e=>{
+    const widgetBtn = e.target.closest('[data-action="widgetpicker-toggle"]');
+    if(widgetBtn){
+      e.stopPropagation();
+      if(widgetMenuState && widgetMenuState.btnEl === widgetBtn){ closeWidgetMenu(); }
+      else { closeWidgetMenu(); closeColMenu(); closeColFilterMenu(); openWidgetMenuFor(widgetBtn); }
+      return;
+    }
+
+    const colBtn = e.target.closest('[data-action="colpicker-toggle"]');
+    if(colBtn){
+      e.stopPropagation();
+      if(colMenuState && colMenuState.btnEl === colBtn){ closeColMenu(); }
+      else { closeColMenu(); closeColFilterMenu(); closeWidgetMenu(); openColMenuFor(colBtn); }
+      return;
+    }
+
+    const filterBtn = e.target.closest('[data-action="col-filter-toggle"]');
+    if(filterBtn){
+      e.stopPropagation();
+      if(colFilterState && colFilterState.btnEl === filterBtn){ closeColFilterMenu(); }
+      else { closeColFilterMenu(); closeColMenu(); closeWidgetMenu(); openColFilterMenuFor(filterBtn); }
+      return;
+    }
+
+    const closeEl = e.target.closest('[data-action="close-blade"]');
+    if(closeEl){ closeBladeAt(parseInt(closeEl.dataset.depth,10)); return; }
+
+    const drillEl = e.target.closest('[data-action="drill"]');
+    if(drillEl){
+      const idx = parseInt(drillEl.dataset.bladeIndex,10);
+      const type = drillEl.dataset.type;
+      const title = drillEl.dataset.title;
+      const params = {};
+      if(drillEl.dataset.hostkey) params.hostKey = drillEl.dataset.hostkey;
+      if(drillEl.dataset.assetId) params.assetId = drillEl.dataset.assetId;
+      if(drillEl.dataset.stigKey) params.stigKey = drillEl.dataset.stigKey;
+      if(drillEl.dataset.changelogIndex !== undefined) params.changelogIndex = parseInt(drillEl.dataset.changelogIndex,10);
+      if(drillEl.dataset.presetStatus) params.presetStatus = drillEl.dataset.presetStatus;
+      if(drillEl.dataset.presetSev) params.presetSev = drillEl.dataset.presetSev;
+      if(drillEl.dataset.presetCrit) params.presetCrit = drillEl.dataset.presetCrit;
+      if(drillEl.dataset.presetAcrband) params.presetAcrBand = drillEl.dataset.presetAcrband;
+      if(drillEl.dataset.presetAes) params.presetAES = drillEl.dataset.presetAes;
+      openBlade(idx+1, type, title, params);
+      return;
+    }
+
+    const findingEl = e.target.closest('[data-action="drill-finding"]');
+    if(findingEl){
+      const bladeId = findingEl.dataset.bladeId;
+      const blade = bladeStack.find(b=>b.id===bladeId);
+      if(!blade) return;
+      const idx = bladeStack.indexOf(blade);
+      const vuln = (blade._lastVulns||[]).find(v=>v.id===findingEl.dataset.vulnId);
+      if(!vuln) return;
+      // Highlight the row directly — never re-render the parent blade just
+      // for this, so its scroll position never moves.
+      const tbody = findingEl.closest("tbody");
+      if(tbody){ tbody.querySelectorAll("tr.active-row").forEach(tr=>tr.classList.remove("active-row")); findingEl.classList.add("active-row"); }
+      blade.state.activeVulnId = vuln.id;
+      openBlade(idx+1, "findingDetail", vuln.ruleVer || vuln.ruleTitle, {vuln, parentBladeId: blade.id});
+      return;
+    }
+
+    const sortEl = e.target.closest('[data-action="sort"]');
+    if(sortEl){
+      const blade = bladeStack.find(b=>b.id===sortEl.dataset.bladeId);
+      if(blade){
+        const key = sortEl.dataset.key;
+        if(blade.state.sortKey === key) blade.state.sortDir *= -1;
+        else { blade.state.sortKey = key; blade.state.sortDir = 1; }
+        refreshBlade(blade.id);
+      }
+      return;
+    }
+
+    const exportEl = e.target.closest('[data-action="export"]');
+    if(exportEl){
+      const blade = bladeStack.find(b=>b.id===exportEl.dataset.bladeId);
+      if(blade) exportCSV(blade._lastVulns||[], (blade.title||"ckl").replace(/[^a-z0-9]+/gi,"_").toLowerCase());
+      return;
+    }
+
+    const removeEl = e.target.closest('[data-action="remove-asset"]');
+    if(removeEl){ removeAsset(removeEl.dataset.assetId); return; }
+
+    const addFilesEl = e.target.closest('[data-action="add-files"]');
+    if(addFilesEl){ fileInput.click(); return; }
+
+    const acrCsvBtn = e.target.closest('[data-action="upload-acr-csv"]');
+    if(acrCsvBtn){ acrCsvInput.click(); return; }
+  });
+
+  bladeScroll.addEventListener("change", e=>{
+    const acrSel = e.target.closest('[data-action="set-acr-override"]');
+    if(acrSel){
+      const hostKey = acrSel.dataset.hostkey;
+      const val = acrSel.value;
+      if(val === "auto") acrOverrides.delete(hostKey);
+      else acrOverrides.set(hostKey, parseInt(val,10));
+      // Refresh every currently-open blade whose content depends on ACR/AES —
+      // each refresh is still targeted to that single blade only.
+      refreshDependentBlades(b => b.type==="dashboard" || b.type==="assets" || b.type==="stigDetail" || b.type==="findings" || (b.type==="assetDetail" && b.params.hostKey===hostKey));
+      return;
+    }
+  });
+
+  bladeScroll.addEventListener("input", e=>{
+    const el = e.target.closest('[data-action="search"]');
+    if(!el) return;
+    const blade = bladeStack.find(b=>b.id===el.dataset.bladeId);
+    if(!blade) return;
+    blade.state.search = el.value;
+    refreshBlade(blade.id);
+    const fresh = document.querySelector(`[data-blade-id="${blade.id}"] [data-action="search"]`);
+    if(fresh){ fresh.focus(); fresh.selectionStart = fresh.selectionEnd = fresh.value.length; }
+  });
+
+  updateShellChrome();
+})();
+</script>
+</body>
+</html>
