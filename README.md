@@ -33,10 +33,10 @@ Re-running it overwrites the existing sample files. To add more sample assets, a
 
 ```
 hostname, acr
-it-rjohnson-lap, 5
+wks-04821, 8
 ```
 
-- `hostname` must match a loaded asset's host name (case-insensitive) — e.g. it matches the host name embedded in `IT-RJOHNSON-LAP_COMBINED_20260722-172034.cklb`.
+- `hostname` must match a loaded asset's host name (case-insensitive) — e.g. the sample above matches `wks-04821`, the Windows 11 workstation in `sample checklists/wks-04821.cklb` — bumping it from its auto-calculated ACR of 4 up to 8, the kind of override you'd apply if ACAS shows it's actually used by a privileged admin.
 - `acr` is an integer 1–10, taken directly from each asset's ACR in ACAS.
 - Upload it via **↑ ACR Overrides (CSV)** (found in the Assets view) *after* loading the checklist files it references — unmatched hostnames and invalid values are reported back after upload.
 - Any host not covered by the CSV falls back to the dashboard's own auto-inferred ACR (from asset role/hostname/STIG signals) — treat that as a stand-in only until the real ACAS value is imported.
