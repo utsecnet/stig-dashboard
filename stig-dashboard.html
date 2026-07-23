@@ -30,6 +30,7 @@
     --crit-m:#e08a3c; --crit-m-text:#1a1005;
     --crit-h:#e5484d; --crit-h-text:#000000;
     --crit-c:#7a1620; --crit-c-text:#ffffff;
+    --crit-ok:#4ea8de; --crit-ok-text:#06141c;
     --mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
     --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
@@ -147,7 +148,12 @@
   .blade-meta{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:6px;}
   .blade-meta b{color:var(--text);font-weight:600;}
   .blade-body{padding:14px 18px 22px;}
-  .dash-widgets-bar{display:flex;justify-content:flex-end;margin-bottom:8px;}
+
+  /* ===== Dashboard tabs ===== */
+  .dash-tabs{display:flex;gap:4px;border-bottom:1px solid var(--hairline);margin:14px 0 14px;}
+  .dash-tab{font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;color:var(--muted);padding:8px 14px 9px;cursor:pointer;border-bottom:2px solid transparent;user-select:none;margin-bottom:-1px;}
+  .dash-tab:hover{color:var(--text);}
+  .dash-tab.active{color:var(--text);border-bottom-color:var(--naf);}
 
   .empty-note{font-family:var(--mono);font-size:11.5px;color:var(--dim);padding:20px 4px;line-height:1.7;}
 
@@ -157,12 +163,6 @@
   .tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;}
   .tile.open::before{background:var(--open);} .tile.naf::before{background:var(--naf);}
   .tile.nr::before{background:var(--nr);} .tile.na::before{background:var(--na);}
-  .tile.assetsTile::before{background:var(--accent-blue);}
-  .tile.assetsTile .n{color:var(--accent-blue);}
-  .tile.aesTile.crit-lb::before{background:var(--crit-l);} .tile.aesTile.crit-lb .n{color:var(--crit-l);}
-  .tile.aesTile.crit-mb::before{background:var(--crit-m);} .tile.aesTile.crit-mb .n{color:var(--crit-m);}
-  .tile.aesTile.crit-hb::before{background:var(--crit-h);} .tile.aesTile.crit-hb .n{color:var(--crit-h);}
-  .tile.aesTile.crit-cb::before{background:var(--crit-c);} .tile.aesTile.crit-cb .n{color:var(--crit-c);}
   .tile .n{font-family:var(--mono);font-size:20px;font-weight:700;letter-spacing:-.02em;}
   .tile.open .n{color:var(--open);} .tile.naf .n{color:var(--naf);}
   .tile.nr .n{color:var(--nr);} .tile.na .n{color:var(--na);}
@@ -172,7 +172,6 @@
   .tile[data-action]:active{transform:translateY(0);}
 
   /* ===== AES tile group ===== */
-  .aes-tiles-wrap{margin-bottom:12px;}
   .ces-panel{background:var(--panel-raised);border:1px solid var(--hairline);border-radius:6px;padding:16px;margin-bottom:18px;}
   .ces-panel .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;flex-wrap:wrap;gap:6px;}
   .ces-panel .head h3{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0;font-weight:600;}
@@ -184,13 +183,40 @@
   .scatter-panel .head h3{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0;font-weight:600;}
   .scatter-panel .head .overall{font-family:var(--mono);font-size:11px;color:var(--dim);}
   .scatter-wrap{margin-top:6px;}
-  .scatter-svg{width:100%;height:auto;max-height:340px;}
-  .pareto-svg{width:100%;height:auto;max-height:340px;}
-  .scatter-svg g[data-action="drill"],
-  .pareto-svg g[data-action="drill"]{cursor:pointer;}
-  .scatter-svg g[data-action="drill"]:hover .dot-fill,
-  .pareto-svg g[data-action="drill"]:hover .bar-fill{filter:brightness(1.25);}
-  .aes-tiles-wrap .tiles{margin-bottom:0;}
+  .scatter-svg{width:100%;height:100%;}
+  .scatter-row{display:flex;gap:16px;align-items:stretch;margin-bottom:12px;height:320px;}
+  .scatter-row > .scatter-panel{flex:1;min-width:0;margin-bottom:0;display:flex;flex-direction:column;}
+  .scatter-row > .scatter-panel .scatter-wrap{flex:1;min-height:0;display:flex;}
+  .scatter-row > .aes-count-block{flex:0 0 150px;margin-bottom:0;display:flex;flex-direction:column;}
+  .aes-count-block .crit-tiles{gap:4px;}
+  .aes-count-block .crit-tile{padding:4px 10px;border-radius:5px;}
+  .aes-count-block .crit-tile .n{font-size:14px;}
+  .aes-count-block .crit-tile .lbl{font-size:9px;margin-top:0;}
+
+  /* ===== CES / donut chart row (Assets tab) ===== */
+  .ces-row{display:flex;gap:16px;align-items:stretch;margin-bottom:12px;}
+  .ces-row > .ces-panel{flex:1;min-width:0;margin-bottom:0;}
+  .ces-row > .donut-panel{flex:1;min-width:0;margin-bottom:0;}
+
+  /* ===== Donut charts (OS / CAT / Criticality / STIG) ===== */
+  .donut-panel{background:var(--panel-raised);border:1px solid var(--hairline);border-radius:6px;padding:16px;margin-bottom:12px;}
+  .donut-panel .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;flex-wrap:wrap;gap:6px;}
+  .donut-panel .head h3{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0;font-weight:600;}
+  .donut-panel .head .overall{font-family:var(--mono);font-size:11px;color:var(--dim);}
+  .donut-wrap{display:flex;align-items:flex-start;gap:16px;margin-top:8px;flex-wrap:wrap;}
+  .donut-chart{flex:0 0 130px;width:130px;}
+  .donut-svg{width:100%;height:auto;display:block;}
+  .donut-legend{flex:1;min-width:120px;display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;padding-right:4px;}
+  .donut-legend-row{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--muted);}
+  .donut-legend-row i{width:9px;height:9px;border-radius:2px;flex:none;display:inline-block;}
+  .donut-legend-label{flex:1;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .donut-legend-val{color:var(--dim);flex:none;}
+  .donut-seg[data-action="drill"]{cursor:pointer;transition:filter .1s;}
+  .donut-seg[data-action="drill"]:hover{filter:brightness(1.25);}
+  .donut-legend-row[data-action="drill"]{cursor:pointer;border-radius:4px;margin:-3px -4px;padding:3px 4px;transition:background .1s;}
+  .donut-legend-row[data-action="drill"]:hover{background:var(--panel);}
+  .donut-row{display:flex;gap:16px;align-items:stretch;margin-bottom:12px;flex-wrap:wrap;}
+  .donut-row > .donut-panel{flex:1;min-width:240px;margin-bottom:0;}
 
   /* ===== Compliance bars ===== */
   .compliance-block{background:var(--panel-raised);border:1px solid var(--hairline);border-radius:6px;padding:12px 14px 10px;margin-bottom:12px;}
@@ -233,6 +259,7 @@
   .matrix-count{font-size:16px;font-weight:800;line-height:1.1;}
 
   /* ===== Criticality badges / summary ===== */
+  .crit-ok{background:var(--crit-ok);color:var(--crit-ok-text);}
   .crit-l{background:var(--crit-l);color:var(--crit-l-text);}
   .crit-m{background:var(--crit-m);color:var(--crit-m-text);}
   .crit-h{background:var(--crit-h);color:var(--crit-h-text);}
@@ -298,6 +325,15 @@
   }
   .search-input::placeholder{color:var(--dim);}
   .search-input:focus{outline:none;border-color:var(--hairline-bright);}
+  .filter-group{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+  .chip{
+    font-family:var(--mono);font-size:10.5px;padding:5px 10px;border-radius:20px;
+    border:1px solid var(--hairline-bright);color:var(--muted);cursor:pointer;white-space:nowrap;
+  }
+  .chip.on{color:var(--void);font-weight:700;border-color:transparent;}
+  .chip[data-v=all].on{background:var(--text);}
+  .chip[data-v=hasOpen].on{background:var(--open);}
+  .chip[data-v=fullyClosed].on{background:var(--naf);}
   .export-btn{
     font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--panel-raised);
     border:1px solid var(--hairline-bright);padding:7px 12px;border-radius:4px;cursor:pointer;
@@ -435,9 +471,8 @@
 
   function formatToday(){
     const d = new Date();
-    const mm = String(d.getMonth()+1).padStart(2,"0");
-    const dd = String(d.getDate()).padStart(2,"0");
-    return `${d.getFullYear()}-${mm}-${dd}`;
+    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
   }
   const CHANGELOG = [
     {version:"1.0", date: formatToday(), notes:"Initial release"}
@@ -446,6 +481,7 @@
   let assets = []; // {id, fileName, hostName, hostIp, stigTitle, stigVersion, releaseInfo, vulns:[...]}
   let bladeStack = [];
   let bladeSeq = 0;
+  let lastDashboardRows = []; // most recently computed dashboard asset rows, for scatter chart resize redraws
   const acrOverrides = new Map(); // hostKey -> integer 1-10
 
   const $ = (sel, root) => (root||document).querySelector(sel);
@@ -455,23 +491,16 @@
     return (s||"").toString().replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
 
-  // Builds a name->value lookup from a VULN's STIG_DATA children in a single
-  // pass. Equivalent to calling the old per-attribute attr() helper once for
-  // each of the ~10 fields we need, but does one scan instead of ten —
-  // matters on STIGs with hundreds of rules. Keeps first-match-wins
-  // semantics (an attribute name appearing more than once keeps its first
-  // occurrence), same as the original linear-scan version.
-  function buildAttrMap(vulnEl){
-    const map = new Map();
-    vulnEl.querySelectorAll("STIG_DATA").forEach(n=>{
+  function attr(vulnEl, name){
+    const nodes = vulnEl.querySelectorAll("STIG_DATA");
+    for(const n of nodes){
       const key = n.querySelector("VULN_ATTRIBUTE");
-      if(!key) return;
-      const name = key.textContent.trim();
-      if(map.has(name)) return;
-      const val = n.querySelector("ATTRIBUTE_DATA");
-      map.set(name, val ? val.textContent.trim() : "");
-    });
-    return map;
+      if(key && key.textContent.trim() === name){
+        const val = n.querySelector("ATTRIBUTE_DATA");
+        return val ? val.textContent.trim() : "";
+      }
+    }
+    return "";
   }
 
   function textOf(root, tag){
@@ -524,20 +553,18 @@
       const vulnEls = iStig.querySelectorAll("VULN");
       const vulns = [];
       vulnEls.forEach((v, idx)=>{
-        const am = buildAttrMap(v);
-        const g = name => am.get(name) || "";
         vulns.push({
           id: filename + "-" + sIdx + "-" + idx,
-          vulnNum: g("Vuln_Num"),
-          ruleId: g("Rule_ID"),
-          ruleVer: g("Rule_Ver"),
-          ruleTitle: g("Rule_Title") || "(untitled rule)",
-          severity: (g("Severity") || "medium").toLowerCase(),
-          groupTitle: g("Group_Title"),
-          discussion: g("Vuln_Discuss"),
-          checkContent: g("Check_Content"),
-          fixText: g("Fix_Text"),
-          cci: g("CCI_REF"),
+          vulnNum: attr(v,"Vuln_Num"),
+          ruleId: attr(v,"Rule_ID"),
+          ruleVer: attr(v,"Rule_Ver"),
+          ruleTitle: attr(v,"Rule_Title") || "(untitled rule)",
+          severity: (attr(v,"Severity") || "medium").toLowerCase(),
+          groupTitle: attr(v,"Group_Title"),
+          discussion: attr(v,"Vuln_Discuss"),
+          checkContent: attr(v,"Check_Content"),
+          fixText: attr(v,"Fix_Text"),
+          cci: attr(v,"CCI_REF"),
           status: normalizeStatus(textOf(v,"STATUS")),
           findingDetails: textOf(v,"FINDING_DETAILS"),
           comments: textOf(v,"COMMENTS")
@@ -638,7 +665,7 @@
   }
 
   function removeAsset(id){
-    closeColMenu(); closeColFilterMenu(); closeWidgetMenu(); hideTooltip();
+    closeColMenu(); closeColFilterMenu(); hideTooltip();
     assets = assets.filter(a => a.id !== id);
     const blade = newBlade("import", "Import", {});
     blade.__menu = "import";
@@ -746,6 +773,36 @@
       if(p.tags.some(tag=>hostNameLower.includes(tag)) && (!best || p.score > best.score)) best = p;
     });
     return best;
+  }
+
+  // Operating system inference for the "Assets by Operating System" donut —
+  // scans a host's loaded STIG titles for known OS-defining strings. More
+  // specific (longer) tags win over generic ones so e.g. "Windows Server
+  // 2019" is preferred over the generic "Windows Server" when both match.
+  const OS_NAME_PATTERNS = [
+    {label:"Windows Server 2022", tags:["windows server 2022"]},
+    {label:"Windows Server 2019", tags:["windows server 2019"]},
+    {label:"Windows Server 2016", tags:["windows server 2016"]},
+    {label:"Windows Server 2012", tags:["windows server 2012"]},
+    {label:"Windows Server", tags:["windows server"]},
+    {label:"Windows 11", tags:["windows 11"]},
+    {label:"Windows 10", tags:["windows 10"]},
+    {label:"Red Hat Enterprise Linux", tags:["red hat enterprise linux"]},
+    {label:"Ubuntu Linux", tags:["ubuntu"]},
+    {label:"SUSE Linux", tags:["suse linux enterprise"]},
+    {label:"Solaris", tags:["solaris"]},
+    {label:"z/OS", tags:["z/os"]},
+    {label:"macOS", tags:["apple macos"]},
+    {label:"iOS", tags:["apple ios"]},
+    {label:"Android", tags:["google android"]}
+  ];
+  function inferHostOS(host){
+    const corpus = (host.stigs||[]).map(s=>s.stigTitle||"").join(" ").toLowerCase();
+    let best = null;
+    OS_NAME_PATTERNS.forEach(p=>{
+      if(p.tags.some(tag=>corpus.includes(tag)) && (!best || p.tags[0].length > best.tags[0].length)) best = p;
+    });
+    return best ? best.label : "Other / Unspecified";
   }
 
   function inferAutoACR(host){
@@ -897,7 +954,8 @@
     if(aes>=900) return "Critical";
     if(aes>=700) return "High";
     if(aes>=400) return "Medium";
-    return "Low";
+    if(aes>=300) return "Low";
+    return "OK";
   }
 
   function acrBadgeHtml(hostKey, host){
@@ -909,7 +967,7 @@
   }
   function aesBadgeHtml(aes){
     const band = aesBand(aes);
-    const cls = {Low:"crit-l",Medium:"crit-m",High:"crit-h",Critical:"crit-c"}[band];
+    const cls = {OK:"crit-ok",Low:"crit-l",Medium:"crit-m",High:"crit-h",Critical:"crit-c"}[band];
     const tip = `AES (Asset Exposure Score): combines this asset's ACR with the severity-weighted exposure of its Open and Not Reviewed STIG findings (CAT I / II / III), scaled 0-1000. This asset scores ${aes} -> ${band}.`;
     return `<span class="aes-badge ${cls} tooltip" data-tip="${esc(tip)}">${aes}</span>`;
   }
@@ -987,11 +1045,11 @@
   // Requirement 4 — ACR x CAT matrix + criticality summary panel
   // ==================================================================
 
-  function computeMatrixCounts(assetRows){
+  function computeMatrixCounts(hosts){
     const counts = {"9-10":{high:0,medium:0,low:0}, "7-8":{high:0,medium:0,low:0}, "4-6":{high:0,medium:0,low:0}, "1-3":{high:0,medium:0,low:0}};
-    assetRows.forEach(r=>{
-      const band = acrBand(r.acr);
-      r.host.stigs.forEach(a=>a.vulns.forEach(v=>{
+    hosts.forEach(h=>{
+      const band = acrBand(getACR(h.hostKey, h).value);
+      h.stigs.forEach(a=>a.vulns.forEach(v=>{
         if(v.status !== "Open") return;
         counts[band][v.severity] = (counts[band][v.severity]||0) + 1;
       }));
@@ -999,11 +1057,11 @@
     return counts;
   }
 
-  function acrCatMatrixHtml(bladeIndex, assetRows){
+  function acrCatMatrixHtml(bladeIndex, hosts){
     const rows = [["9-10","9–10"],["7-8","7–8"],["4-6","4–6"],["1-3","1–3"]];
     const sevCols = [["low","CAT III"],["medium","CAT II"],["high","CAT I"]];
     const words = {L:"Low", M:"Medium", H:"High", C:"Critical"};
-    const counts = computeMatrixCounts(assetRows);
+    const counts = computeMatrixCounts(hosts);
     return `<div class="matrix-block">
       <div class="head"><h3>ACR × CAT Criticality Matrix</h3><span class="overall tooltip" data-tip="Rows = Asset Criticality Rating band. Columns = STIG finding severity category. Each cell shows the count of Open findings in that combination, colored by the resulting criticality. Click a cell to view matching findings.">how is this used?</span></div>
       <table class="matrix-table">
@@ -1024,11 +1082,11 @@
     </div>`;
   }
 
-  function critSummaryHtml(bladeIndex, assetRows){
+  function critSummaryHtml(bladeIndex, hosts){
     const counts = {L:0,M:0,H:0,C:0};
-    assetRows.forEach(r=>{
-      const acrVal = r.acr;
-      r.host.stigs.forEach(a=>a.vulns.forEach(v=>{
+    hosts.forEach(h=>{
+      const acrVal = getACR(h.hostKey, h).value;
+      h.stigs.forEach(a=>a.vulns.forEach(v=>{
         if(v.status !== "Open") return;
         counts[findingCriticality(acrVal, v.severity)]++;
       }));
@@ -1044,27 +1102,12 @@
     </div>`;
   }
 
-  function dashboardTilesHtml(bladeIndex, stats, assetCount){
+  function dashboardTilesHtml(bladeIndex, stats){
     return `<div class="tiles">
-      <div class="tile assetsTile" data-action="drill" data-blade-index="${bladeIndex}" data-type="assets" data-title="All Assets"><div class="n">${assetCount}</div><div class="lbl">Assets</div></div>
       <div class="tile open" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="Open Findings" data-preset-status="Open"><div class="n">${stats.Open}</div><div class="lbl">Open</div></div>
       <div class="tile nr" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="Not Reviewed Findings" data-preset-status="Not_Reviewed"><div class="n">${stats.Not_Reviewed}</div><div class="lbl">Not Reviewed</div></div>
       <div class="tile naf" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="Not a Finding" data-preset-status="NotAFinding"><div class="n">${stats.NotAFinding}</div><div class="lbl">Not a Finding</div></div>
       <div class="tile na" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="Not Applicable Findings" data-preset-status="Not_Applicable"><div class="n">${stats.Not_Applicable}</div><div class="lbl">Not Applicable</div></div>
-    </div>`;
-  }
-
-  function aesTilesHtml(bladeIndex, rows){
-    const counts = {Low:0,Medium:0,High:0,Critical:0};
-    rows.forEach(r=> counts[aesBand(r.aes)]++ );
-    const bandClass = {Low:"crit-lb",Medium:"crit-mb",High:"crit-hb",Critical:"crit-cb"};
-    return `<div class="aes-tiles-wrap">
-      <div class="compliance-block" style="padding-bottom:16px;">
-        <div class="head"><h3>Assets by AES Summary</h3><span class="overall tooltip" data-tip="AES combines each asset's Asset Criticality Rating (ACR) with the severity-weighted exposure of its open and unreviewed STIG findings, scaled 0–1000. Bands: 0–399 Low, 400–699 Medium, 700–899 High, 900–1000 Critical.">what is AES?</span></div>
-        <div class="tiles">
-          ${["Critical","High","Medium","Low"].map(band=>`<div class="tile aesTile ${bandClass[band]}" data-action="drill" data-blade-index="${bladeIndex}" data-type="assets" data-title="${band} AES Assets" data-preset-aes="${band}"><div class="n">${counts[band]}</div><div class="lbl">${band}</div></div>`).join("")}
-        </div>
-      </div>
     </div>`;
   }
 
@@ -1129,8 +1172,9 @@
 
   // Scatter plot — one point per host, X = AES score, Y = total STIG finding
   // count, with the same 300/500/700/900 benchmark lines used on the gauge.
-  function scatterPlotSvg(rows, bladeIndex){
-    const W = 480, H = 300, mL = 46, mR = 18, mT = 16, mB = 42;
+  function scatterPlotSvg(rows, W, H){
+    W = W || 480; H = H || 300;
+    const mL = 46, mR = 18, mT = 16, mB = 42;
     const pw = W-mL-mR, ph = H-mT-mB;
     const maxCount = Math.max(1, ...rows.map(r=>r.total));
     const yMax = Math.max(10, Math.ceil((maxCount*1.15)/10)*10);
@@ -1157,11 +1201,7 @@
 
     const points = rows.map(r=>{
       const cx = xOf(r.aes), cy = yOf(r.total);
-      return `<g data-action="drill" data-blade-index="${bladeIndex}" data-type="assetDetail" data-title="${esc(r.host.hostName)}" data-hostkey="${esc(r.host.hostKey)}">
-        <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="10" fill="transparent"/>
-        <circle class="dot-fill" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5" fill="${bandColor(r.aes)}" fill-opacity="0.85" stroke="#0a0f13" stroke-width="1"/>
-        <title>${esc(r.host.hostName)} — AES ${r.aes}, ${r.total} findings</title>
-      </g>`;
+      return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5" fill="${bandColor(r.aes)}" fill-opacity="0.85" stroke="#0a0f13" stroke-width="1"><title>${esc(r.host.hostName)} — AES ${r.aes}, ${r.total} findings</title></circle>`;
     }).join("");
 
     return `<svg viewBox="0 0 ${W} ${H}" class="scatter-svg">
@@ -1176,106 +1216,152 @@
     </svg>`;
   }
 
-  function scatterPanelHtml(rows, bladeIndex){
+  function scatterPanelHtml(rows){
     if(!rows.length) return "";
     return `<div class="scatter-panel">
-      <div class="head"><h3>AES vs. Finding Count</h3><span class="overall tooltip" data-tip="Each point is one asset — X axis is its AES (Asset Exposure Score), Y axis is its total STIG finding count. Click a point to open that asset. Dashed lines mark the same 300/500/700/900 AES benchmarks used on the CES gauge.">what is this?</span></div>
-      <div class="scatter-wrap">${scatterPlotSvg(rows, bladeIndex)}</div>
+      <div class="head"><h3>AES vs. Finding Count</h3><span class="overall tooltip" data-tip="Each point is one asset — X axis is its AES (Asset Exposure Score), Y axis is its total STIG finding count. Dashed lines mark the same 300/500/700/900 AES benchmarks used on the CES gauge.">what is this?</span></div>
+      <div class="scatter-wrap">${scatterPlotSvg(rows)}</div>
     </div>`;
   }
 
-  // Risk Pareto — assets sorted by AES descending, with the smallest
-  // leading set of assets whose combined AES accounts for ~80% of the
-  // total AES across all assets ("the 80/20 rule") highlighted in red;
-  // the rest orange (the same orange used for the AES-vs-Finding-Count
-  // scatter's mid-band dots).
-  function computeParetoData(rows){
-    const sorted = rows.slice().sort((a,b)=> b.aes - a.aes);
-    const total = sorted.reduce((s,r)=>s+r.aes, 0);
-    let cum = 0, cutoffIndex = -1;
-    const items = sorted.map((r,i)=>{
-      cum += r.aes;
-      const cumPct = total > 0 ? (cum/total)*100 : 0;
-      if(total > 0 && cutoffIndex === -1 && cumPct >= 80) cutoffIndex = i;
-      return {row:r, cumPct};
-    });
-    return {items, cutoffIndex, total};
+  // Compact companion panel for the scatter chart — Low/Medium/High/Critical/OK
+  // AES bands, rendered as a narrow column of counts alongside the scatter plot.
+  function aesCountBlockHtml(bladeIndex, rows){
+    const counts = {OK:0,Low:0,Medium:0,High:0,Critical:0};
+    rows.forEach(r=> counts[aesBand(r.aes)]++ );
+    const cls = {OK:"crit-ok",Low:"crit-l",Medium:"crit-m",High:"crit-h",Critical:"crit-c"};
+    return `<div class="crit-summary-block aes-count-block">
+      <div class="head"><h3>Assets by AES</h3></div>
+      <div class="crit-tiles">
+        ${["Critical","High","Medium","Low","OK"].map(band=>`<div class="crit-tile ${cls[band]}" data-action="drill" data-blade-index="${bladeIndex}" data-type="assets" data-title="${band} AES Assets" data-preset-aes="${band}">
+          <div class="n">${counts[band]}</div><div class="lbl">${band}</div>
+        </div>`).join("")}
+      </div>
+    </div>`;
   }
 
-  function paretoChartSvg(rows, bladeIndex){
-    const {items, cutoffIndex} = computeParetoData(rows);
-    const n = items.length;
-    const W = 560, H = 300, mL = 46, mR = 40, mT = 16, mB = 30;
-    const pw = W-mL-mR, ph = H-mT-mB;
-    const gap = n > 1 ? Math.min(4, (pw/n)*0.15) : 0;
-    const barW = n ? Math.max(1, (pw - gap*(n-1))/n) : 0;
-    const yOf = v => mT + ph - (Math.max(0,Math.min(1000,v))/1000)*ph;
-    const cumYOf = pct => mT + ph - (Math.max(0,Math.min(100,pct))/100)*ph;
+  // ==================================================================
+  // Donut charts — generic renderer + data builders for: Assets by
+  // Operating System (Assets tab), Findings by CAT / Criticality / STIG
+  // (Findings tab).
+  // ==================================================================
 
-    const yTicks = [0,250,500,750,1000].map(v=>{
-      const y = yOf(v);
-      return `<line x1="${mL}" y1="${y.toFixed(1)}" x2="${mL+pw}" y2="${y.toFixed(1)}" stroke="#1c2830" stroke-width="1"/>
-        <text x="${mL-8}" y="${y.toFixed(1)}" text-anchor="end" dominant-baseline="middle" font-size="9" font-family="ui-monospace,monospace" fill="#8196a3">${v}</text>`;
+  const DONUT_PALETTE = ["#4ea8de","#35c77e","#f0a93b","#e5484d","#7a1620","#d9be4a","#e08a3c","#9b7bd8","#8196a3","#526270"];
+
+  // Builds the data-action="drill" attribute string for a donut slice/legend
+  // row, reusing the exact same blade-opening mechanism as every other
+  // clickable tile/cell in the dashboard. Returns "" (not clickable) when
+  // bladeIndex is unavailable or the slice has no meaningful single-value
+  // filter (e.g. the STIG donut's aggregated "Other" bucket).
+  function donutDrillAttrs(bladeIndex, type, title, presetObj){
+    if(bladeIndex === null || bladeIndex === undefined) return "";
+    let attrs = `data-action="drill" data-blade-index="${bladeIndex}" data-type="${esc(type)}" data-title="${esc(title)}"`;
+    Object.entries(presetObj||{}).forEach(([k,v])=>{
+      if(v!==undefined && v!==null && v!=="") attrs += ` data-${k}="${esc(String(v))}"`;
+    });
+    return attrs;
+  }
+
+  function donutSvg(entries, centerLabel){
+    const total = entries.reduce((s,e)=>s+e[1],0);
+    const cx=90, cy=90, r=64, sw=26;
+    const circumference = 2*Math.PI*r;
+    if(!total){
+      return `<svg viewBox="0 0 180 180" class="donut-svg">
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#233039" stroke-width="${sw}"/>
+        <text x="${cx}" y="${cy-4}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="24" font-weight="800" fill="#526270">0</text>
+        <text x="${cx}" y="${cy+14}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#526270" letter-spacing="1">${esc(centerLabel)}</text>
+      </svg>`;
+    }
+    let cum = 0;
+    const gap = entries.filter(e=>e[1]>0).length > 1 ? 2 : 0;
+    const segs = entries.filter(e=>e[1]>0).map(([label,count,color,attrs])=>{
+      const frac = count/total;
+      const raw = frac*circumference;
+      const segLen = Math.max(0, raw-gap);
+      const dashoffset = -cum;
+      cum += raw;
+      return `<circle class="donut-seg" cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-dasharray="${segLen.toFixed(2)} ${(circumference-segLen).toFixed(2)}" stroke-dashoffset="${dashoffset.toFixed(2)}" transform="rotate(-90 ${cx} ${cy})" ${attrs||""}><title>${esc(label)} — ${count} (${Math.round(frac*100)}%)</title></circle>`;
     }).join("");
-    const cumTicks = [0,50,100].map(v=>{
-      const y = cumYOf(v);
-      return `<text x="${mL+pw+8}" y="${y.toFixed(1)}" font-size="9" font-family="ui-monospace,monospace" fill="#4ea8de" dominant-baseline="middle">${v}%</text>`;
-    }).join("");
-
-    const eightyY = cumYOf(80);
-    const eightyLine = `<line x1="${mL}" y1="${eightyY.toFixed(1)}" x2="${mL+pw}" y2="${eightyY.toFixed(1)}" stroke="#8196a3" stroke-width="1" stroke-dasharray="3 3"/>`;
-
-    const cutoffLine = cutoffIndex >= 0 && cutoffIndex < n-1 ? (()=>{
-      const x = mL + (cutoffIndex+1)*(barW+gap) - gap/2;
-      return `<line x1="${x.toFixed(1)}" y1="${mT}" x2="${x.toFixed(1)}" y2="${mT+ph}" stroke="#e5484d" stroke-width="1" stroke-dasharray="4 3" opacity="0.55"/>`;
-    })() : "";
-
-    const bars = items.map((it,i)=>{
-      const x = mL + i*(barW+gap);
-      const y = yOf(it.row.aes);
-      const h = (mT+ph) - y;
-      const isPareto = cutoffIndex >= 0 && i <= cutoffIndex;
-      const color = isPareto ? "#e5484d" : "#e08a3c";
-      const tip = `${esc(it.row.host.hostName)} — AES ${it.row.aes}, cumulative ${it.cumPct.toFixed(1)}% of total risk`;
-      return `<g data-action="drill" data-blade-index="${bladeIndex}" data-type="assetDetail" data-title="${esc(it.row.host.hostName)}" data-hostkey="${esc(it.row.host.hostKey)}">
-        <rect x="${x.toFixed(1)}" y="${mT}" width="${barW.toFixed(2)}" height="${ph.toFixed(1)}" fill="transparent"/>
-        <rect class="bar-fill" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(2)}" height="${Math.max(0,h).toFixed(1)}" fill="${color}"/>
-        <title>${tip}</title>
-      </g>`;
-    }).join("");
-
-    const linePts = items.map((it,i)=>{
-      const x = mL + i*(barW+gap) + barW/2;
-      const y = cumYOf(it.cumPct);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    }).join(" ");
-    const cumLine = n ? `<polyline points="${linePts}" fill="none" stroke="#4ea8de" stroke-width="1.5"/>` : "";
-
-    return `<svg viewBox="0 0 ${W} ${H}" class="pareto-svg">
-      ${yTicks}
-      <line x1="${mL}" y1="${mT}" x2="${mL}" y2="${mT+ph}" stroke="#324450" stroke-width="1"/>
-      <line x1="${mL}" y1="${mT+ph}" x2="${mL+pw}" y2="${mT+ph}" stroke="#324450" stroke-width="1"/>
-      ${eightyLine}
-      ${cumTicks}
-      ${cutoffLine}
-      ${bars}
-      ${cumLine}
-      <text x="${mL+pw/2}" y="${H-4}" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#8196a3" letter-spacing="1">ASSETS — SORTED BY AES, HIGH → LOW</text>
-      <text x="12" y="${mT+ph/2}" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#8196a3" letter-spacing="1" transform="rotate(-90 12 ${mT+ph/2})">AES SCORE</text>
+    return `<svg viewBox="0 0 180 180" class="donut-svg">
+      ${segs}
+      <text x="${cx}" y="${cy-4}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="24" font-weight="800" fill="#e7edf0">${total}</text>
+      <text x="${cx}" y="${cy+14}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#8196a3" letter-spacing="1">${esc(centerLabel)}</text>
     </svg>`;
   }
 
-  function paretoPanelHtml(rows, bladeIndex){
-    if(!rows.length) return "";
-    return `<div class="scatter-panel">
-      <div class="head"><h3>Risk Pareto — Assets by AES</h3><span class="overall tooltip" data-tip="Assets sorted by AES (Asset Exposure Score), highest to lowest. Bars are red for the smallest leading set of assets whose combined AES adds up to roughly 80% of the total AES across every asset — the '80/20' Pareto principle — and orange for the rest. Click a bar to open that asset. The blue line tracks cumulative % of total AES; the dashed horizontal line marks the 80% threshold.">what is this?</span></div>
-      <div class="scatter-wrap">${paretoChartSvg(rows, bladeIndex)}</div>
-      <div class="legend">
-        <span><i style="background:#e5484d"></i>Pareto assets (≈80% of risk)</span>
-        <span><i style="background:#e08a3c"></i>Remaining assets</span>
-        <span><i style="background:#4ea8de"></i>Cumulative % of total AES</span>
-      </div>
+  function donutLegendHtml(entries){
+    const total = entries.reduce((s,e)=>s+e[1],0) || 1;
+    return entries.map(([label,count,color,attrs])=>`<div class="donut-legend-row" ${attrs||""}>
+      <i style="background:${color}"></i><span class="donut-legend-label" title="${esc(label)}">${esc(label)}</span>
+      <span class="donut-legend-val">${count} · ${Math.round(count/total*100)}%</span>
+    </div>`).join("");
+  }
+
+  function donutPanelHtml(title, tip, entries, centerLabel, emptyMsg){
+    const has = entries.some(e=>e[1]>0);
+    return `<div class="donut-panel">
+      <div class="head"><h3>${esc(title)}</h3>${tip?`<span class="overall tooltip" data-tip="${esc(tip)}">what is this?</span>`:""}</div>
+      ${has ? `<div class="donut-wrap">
+        <div class="donut-chart">${donutSvg(entries, centerLabel)}</div>
+        <div class="donut-legend">${donutLegendHtml(entries)}</div>
+      </div>` : `<div class="empty-note">${esc(emptyMsg||"no data yet")}</div>`}
     </div>`;
+  }
+
+  function osDonutEntries(bladeIndex, hosts){
+    const counts = new Map();
+    hosts.forEach(h=>{
+      const os = inferHostOS(h);
+      counts.set(os, (counts.get(os)||0)+1);
+    });
+    return Array.from(counts.entries()).sort((a,b)=>b[1]-a[1]).map(([label,count],i)=>[
+      label, count, DONUT_PALETTE[i%DONUT_PALETTE.length],
+      donutDrillAttrs(bladeIndex, "assets", `${label} Assets`, {"preset-os": label})
+    ]);
+  }
+
+  function catDonutEntries(bladeIndex, allVulns){
+    const {bySev} = computeStats(allVulns);
+    return [
+      ["CAT I", bySev.high.total, "#e5484d", donutDrillAttrs(bladeIndex, "findings", "CAT I Findings", {"preset-sev":"high"})],
+      ["CAT II", bySev.medium.total, "#e08a3c", donutDrillAttrs(bladeIndex, "findings", "CAT II Findings", {"preset-sev":"medium"})],
+      ["CAT III", bySev.low.total, "#d9be4a", donutDrillAttrs(bladeIndex, "findings", "CAT III Findings", {"preset-sev":"low"})]
+    ];
+  }
+
+  function criticalityDonutEntries(bladeIndex, hosts){
+    const counts = {C:0,H:0,M:0,L:0};
+    hosts.forEach(h=>{
+      const acrVal = getACR(h.hostKey, h).value;
+      h.stigs.forEach(a=>a.vulns.forEach(v=>{
+        if(v.status !== "Open") return;
+        counts[findingCriticality(acrVal, v.severity)]++;
+      }));
+    });
+    const words = {C:"Critical", H:"High", M:"Medium", L:"Low"};
+    const colors = {C:"#7a1620", H:"#e5484d", M:"#e08a3c", L:"#d9be4a"};
+    return ["C","H","M","L"].map(l=>[
+      words[l], counts[l], colors[l],
+      donutDrillAttrs(bladeIndex, "findings", `${words[l]} Criticality Findings`, {"preset-crit":l, "preset-status":"Open"})
+    ]);
+  }
+
+  function stigDonutEntries(bladeIndex, hosts, maxSlices){
+    maxSlices = maxSlices || 7;
+    const counts = new Map();
+    hosts.forEach(h=> h.stigs.forEach(a=>{
+      const label = a.stigTitle || a.fileName || "Untitled STIG";
+      counts.set(label, (counts.get(label)||0) + a.vulns.length);
+    }));
+    const sorted = Array.from(counts.entries()).sort((a,b)=>b[1]-a[1]);
+    const top = sorted.slice(0, maxSlices).map(([label,count],i)=>[
+      label, count, DONUT_PALETTE[i%DONUT_PALETTE.length],
+      donutDrillAttrs(bladeIndex, "findings", `${label} Findings`, {"preset-stig": label})
+    ]);
+    const restCount = sorted.slice(maxSlices).reduce((s,[,ct])=>s+ct,0);
+    if(restCount>0) top.push([`Other (${sorted.length-maxSlices} STIGs)`, restCount, "#324450"]); // aggregate bucket — not individually filterable, so not clickable
+    return top;
   }
 
   // ==================================================================
@@ -1291,6 +1377,7 @@
     {key:"compliance", label:"% Compliant", default:true},
     {key:"ip", label:"IP Address", default:false},
     {key:"role", label:"Role", default:false},
+    {key:"os", label:"Operating System", default:false},
     {key:"total", label:"Total Rules", default:false},
     {key:"notReviewed", label:"Not Reviewed", default:false}
   ];
@@ -1311,6 +1398,7 @@
     {key:"title", label:"Rule Title", default:true},
     {key:"source", label:"Source", default:true},
     {key:"crit", label:"Criticality", default:false},
+    {key:"stig", label:"STIG", default:false},
     {key:"cci", label:"CCI", default:false}
   ];
   const COL_DEFS_BY_KEY = {assets:ASSET_COLS, stigs:STIG_COLS, findings:FINDING_COLS};
@@ -1318,21 +1406,6 @@
   function getVisibleCols(prefKey, defs){
     if(!colPrefs[prefKey]) colPrefs[prefKey] = new Set(defs.filter(d=>d.default).map(d=>d.key));
     return colPrefs[prefKey];
-  }
-
-  // Dashboard blade — togglable panels, shown/hidden via the "Widgets ▾"
-  // picker in the top-right corner. Order here also controls render order.
-  const DASHBOARD_WIDGETS = [
-    {key:"ces", label:"CES Gauge", default:true},
-    {key:"tiles", label:"Summary Tiles", default:true},
-    {key:"aesTiles", label:"Assets by AES", default:true},
-    {key:"compliance", label:"Compliance by Category", default:true},
-    {key:"matrix", label:"ACR × CAT Matrix", default:true},
-    {key:"scatter", label:"AES vs. Finding Count", default:true},
-    {key:"pareto", label:"Risk Pareto (AES)", default:true}
-  ];
-  function widgetPickerHtml(bladeId){
-    return `<button type="button" class="colpicker-btn" data-action="widgetpicker-toggle" data-blade-id="${bladeId}">Widgets ▾</button>`;
   }
 
   function sortIcon(state, key){
@@ -1352,6 +1425,7 @@
     if(state.colFilters.sev.size) v = v.filter(x=>state.colFilters.sev.has(x.severity));
     if(state.colFilters.crit.size) v = v.filter(x=>state.colFilters.crit.has(x._criticality));
     if(state.colFilters.source.size) v = v.filter(x=>state.colFilters.source.has(x._sourceLabel));
+    if(state.colFilters.stig && state.colFilters.stig.size) v = v.filter(x=>state.colFilters.stig.has(x._stigLabel));
     if(state.colFilters.acr && state.colFilters.acr.size) v = v.filter(x=>state.colFilters.acr.has(x._acrBand));
     if(state.search){
       const t = state.search.toLowerCase();
@@ -1374,6 +1448,7 @@
       else if(state.sortKey==="title") r = (a.ruleTitle||"").localeCompare(b.ruleTitle||"");
       else if(state.sortKey==="crit") r = (critRank[a._criticality]??9)-(critRank[b._criticality]??9);
       else if(state.sortKey==="source") r = (a._sourceLabel||"").localeCompare(b._sourceLabel||"");
+      else if(state.sortKey==="stig") r = (a._stigLabel||"").localeCompare(b._stigLabel||"");
       else if(state.sortKey==="cci") r = (a.cci||"").localeCompare(b.cci||"");
       return r * state.sortDir;
     });
@@ -1421,7 +1496,7 @@
     return `<th><div class="th-inner">${labelHtml}${filterBtn}</div></th>`;
   }
 
-  function findingsTableHtml(blade, vulns, showSource, sourceOptions, sourceLabel, sourceFilterable){
+  function findingsTableHtml(blade, vulns, showSource, sourceOptions, sourceLabel, sourceFilterable, stigOptions){
     const prefKey = "findings";
     const defs = FINDING_COLS.filter(d=> d.key!=="source" || showSource)
       .map(d=> (d.key==="source" && sourceLabel) ? Object.assign({}, d, {label:sourceLabel}) : d);
@@ -1430,7 +1505,8 @@
     const activeId = blade.state.activeVulnId;
     const visibleDefs = defs.filter(d=>vis.has(d.key));
     const FILTERABLE = Object.assign({}, FINDING_FILTER_OPTIONS,
-      sourceFilterable === false ? {} : {source: (sourceOptions||[]).map(s=>[s,s])}
+      sourceFilterable === false ? {} : {source: (sourceOptions||[]).map(s=>[s,s])},
+      {stig: (stigOptions||[]).map(s=>[s,s])}
     );
     const header = visibleDefs.map(d=>{
       const filterKey = FILTERABLE[d.key] ? d.key : null;
@@ -1448,6 +1524,7 @@
               case "title": return `<td class="title">${esc(v.ruleTitle)}</td>`;
               case "crit": return `<td>${v._criticality?critBadgeHtml(v._criticality):"—"}</td>`;
               case "source": return `<td class="src">${esc(v._sourceLabel||"")}</td>`;
+              case "stig": return `<td class="src">${esc(v._stigLabel||"—")}</td>`;
               case "cci": return `<td class="src">${esc(v.cci||"—")}</td>`;
               default: return `<td></td>`;
             }
@@ -1480,12 +1557,14 @@
         sev: params.presetSev ? new Set([params.presetSev]) : new Set(),
         crit: params.presetCrit ? new Set([params.presetCrit]) : new Set(),
         source: new Set(),
+        stig: params.presetStig ? new Set([params.presetStig]) : new Set(),
         acr: params.presetAcrBand ? new Set([params.presetAcrBand]) : new Set(),
         aes: params.presetAES ? new Set([params.presetAES]) : new Set(),
-        hasOpen: new Set()
+        os: params.presetOS ? new Set([params.presetOS]) : new Set()
       },
-      widgetVis: type === "dashboard" ? new Set(DASHBOARD_WIDGETS.filter(w=>w.default).map(w=>w.key)) : new Set(),
-      activeVulnId: null
+      filterStatus: "all", // still used by the STIGs blade's Has Open / Fully Closed chips
+      activeVulnId: null,
+      dashboardTab: "assets"
     };
     return {id:"blade"+bladeSeq, type, title, params, state};
   }
@@ -1518,13 +1597,14 @@
     const compliance = total ? Math.round(((naf+na)/total)*100) : 100;
     const acrInfo = getACR(host.hostKey, host);
     const aesInfo = computeAES(host, acrInfo.value);
-    return {host, total, open, nr, naf, na, compliance, acr:acrInfo.value, acrOverride:acrInfo.isOverride, aes:aesInfo.aes};
+    return {host, total, open, nr, naf, na, compliance, acr:acrInfo.value, acrOverride:acrInfo.isOverride, aes:aesInfo.aes, os:inferHostOS(host)};
   }
 
   function filterAssetRows(rows, state){
     let r = rows;
     if(state.colFilters.aes && state.colFilters.aes.size) r = r.filter(x=>state.colFilters.aes.has(aesBand(x.aes)));
     if(state.colFilters.acr && state.colFilters.acr.size) r = r.filter(x=>state.colFilters.acr.has(acrBand(x.acr)));
+    if(state.colFilters.os && state.colFilters.os.size) r = r.filter(x=>state.colFilters.os.has(x.os));
     if(state.search){
       const t = state.search.toLowerCase();
       r = r.filter(x=> (x.host.hostName||"").toLowerCase().includes(t) || (x.host.hostIp||"").toLowerCase().includes(t) || (x.host.role||"").toLowerCase().includes(t));
@@ -1546,6 +1626,7 @@
         case "compliance": return (a.compliance-b.compliance)*dir;
         case "ip": return (a.host.hostIp||"").localeCompare(b.host.hostIp||"")*dir;
         case "role": return (a.host.role||"").localeCompare(b.host.role||"")*dir;
+        case "os": return (a.os||"").localeCompare(b.os||"")*dir;
         default: return 0;
       }
     });
@@ -1567,22 +1648,10 @@
     return {asset:a, total, open:stats.Open, nr:stats.Not_Reviewed, naf:stats.NotAFinding, na:stats.Not_Applicable, compliance};
   }
 
-  // Buckets a STIG row into one of three mutually-exclusive states for the
-  // "Open" column's Excel-style filter menu (replaces the old Has Open /
-  // Fully Closed chip pair, and additionally distinguishes rows that have
-  // no Open findings but still have Not Reviewed ones).
-  function stigOpenBucket(row){
-    if(row.open > 0) return "hasOpen";
-    if(row.nr > 0) return "pendingReview";
-    return "fullyClosed";
-  }
-  const STIG_HASOPEN_FILTER_OPTIONS = [["hasOpen","Has Open"],["pendingReview","Pending Review"],["fullyClosed","Fully Closed"]];
-
   function filterStigRows(rows, state){
     let r = rows;
-    if(state.colFilters.hasOpen && state.colFilters.hasOpen.size){
-      r = r.filter(x=>state.colFilters.hasOpen.has(stigOpenBucket(x)));
-    }
+    if(state.filterStatus === "hasOpen") r = r.filter(x=>x.open>0);
+    else if(state.filterStatus === "fullyClosed") r = r.filter(x=>x.open===0 && x.nr===0);
     if(state.search){
       const t = state.search.toLowerCase();
       r = r.filter(x=> (x.asset.stigTitle||"").toLowerCase().includes(t) || (x.asset.hostName||"").toLowerCase().includes(t) || (x.asset.stigVersion||"").toLowerCase().includes(t));
@@ -1611,6 +1680,11 @@
   function stigsControlsHtml(bladeId, state, defs){
     return `<div class="controls">
       <input class="search-input" data-blade-id="${bladeId}" data-action="search" type="text" placeholder="Search STIG title, host, version..." value="${esc(state.search)}">
+      <div class="filter-group">
+        <div class="chip ${state.filterStatus==='all'?'on':''}" data-blade-id="${bladeId}" data-action="set-filter" data-kind="filterStatus" data-v="all">All</div>
+        <div class="chip ${state.filterStatus==='hasOpen'?'on':''}" data-blade-id="${bladeId}" data-action="set-filter" data-kind="filterStatus" data-v="hasOpen">Has Open</div>
+        <div class="chip ${state.filterStatus==='fullyClosed'?'on':''}" data-blade-id="${bladeId}" data-action="set-filter" data-kind="filterStatus" data-v="fullyClosed">Fully Closed</div>
+      </div>
       ${colPickerHtml("stigs", defs, bladeId, state)}
     </div>`;
   }
@@ -1621,41 +1695,55 @@
     assets.forEach(a => a.vulns.forEach(v => allVulns.push(v)));
     const hosts = groupAssetsByHost();
     const rows = hosts.map(buildAssetRow);
+    lastDashboardRows = rows;
     const {stats} = computeStats(allVulns);
-    const vis = blade.state.widgetVis;
-    return `
-      <div class="dash-widgets-bar">${widgetPickerHtml(blade.id)}</div>
-      <div class="blade-meta">
-        <span>Files loaded: <b>${assets.length}</b></span>
-        <span>Assets: <b>${hosts.length}</b></span>
-        <span>Total rules: <b>${allVulns.length}</b></span>
+    const activeTab = blade.state.dashboardTab || "assets";
+
+    const assetsTabHtml = `
+      <div class="ces-row" style="margin-top:12px;">
+        ${cesPanelHtml(rows)}
+        ${donutPanelHtml("Assets by Operating System", "Each asset's OS is inferred from the most OS-defining STIG title loaded for it. Assets with no recognizable OS-defining STIG are grouped under Other / Unspecified.", osDonutEntries(bladeIndex, hosts), "ASSETS", "no assets loaded yet")}
       </div>
-      ${vis.has("ces") ? `<div style="margin-top:12px;">${cesPanelHtml(rows)}</div>` : ""}
-      ${vis.has("tiles") ? dashboardTilesHtml(bladeIndex, stats, hosts.length) : ""}
-      ${vis.has("aesTiles") ? aesTilesHtml(bladeIndex, rows) : ""}
-      ${vis.has("compliance") ? complianceBarsHtml(allVulns) : ""}
-      ${vis.has("matrix") ? `<div class="matrix-row">
-        ${acrCatMatrixHtml(bladeIndex, rows)}
-        ${critSummaryHtml(bladeIndex, rows)}
-      </div>` : ""}
-      ${vis.has("scatter") ? scatterPanelHtml(rows, bladeIndex) : ""}
-      ${vis.has("pareto") ? paretoPanelHtml(rows, bladeIndex) : ""}`;
+      ${rows.length ? `<div class="scatter-row">${scatterPanelHtml(rows)}${aesCountBlockHtml(bladeIndex, rows)}</div>` : ""}`;
+
+    const findingsTabHtml = `
+      <div style="margin-top:12px;">${dashboardTilesHtml(bladeIndex, stats)}</div>
+      <div class="donut-row">
+        ${donutPanelHtml("by CAT", "Total findings (any status) grouped by STIG severity category.", catDonutEntries(bladeIndex, allVulns), "FINDINGS", "no findings loaded yet")}
+        ${donutPanelHtml("by Criticality", "Open findings grouped by criticality — the same ACR × CAT criticality used in the matrix above.", criticalityDonutEntries(bladeIndex, hosts), "OPEN", "no open findings")}
+        ${donutPanelHtml("by STIG", "Total findings (any status) grouped by STIG. The top 7 STIGs are broken out; the rest are grouped under Other.", stigDonutEntries(bladeIndex, hosts), "FINDINGS", "no findings loaded yet")}
+      </div>
+      ${complianceBarsHtml(allVulns)}
+      <div class="matrix-row">
+        ${acrCatMatrixHtml(bladeIndex, hosts)}
+        ${critSummaryHtml(bladeIndex, hosts)}
+      </div>`;
+
+    return `
+      <div class="dash-tabs">
+        <div class="dash-tab ${activeTab==="assets"?"active":""}" data-action="dash-tab" data-blade-id="${blade.id}" data-tab="assets">Assets (${hosts.length})</div>
+        <div class="dash-tab ${activeTab==="findings"?"active":""}" data-action="dash-tab" data-blade-id="${blade.id}" data-tab="findings">Findings (${allVulns.length})</div>
+      </div>
+      <div class="dash-tab-panel" ${activeTab==="assets"?"":"style=\"display:none;\""}>${assetsTabHtml}</div>
+      <div class="dash-tab-panel" ${activeTab==="findings"?"":"style=\"display:none;\""}>${findingsTabHtml}</div>`;
   }
 
   function renderAssetsList(blade, bladeIndex){
     const hosts = groupAssetsByHost();
     if(!hosts.length) return `<div class="empty-note">no assets loaded yet</div>`;
-    let rows = hosts.map(buildAssetRow);
-    rows = filterAssetRows(rows, blade.state);
+    const allRows = hosts.map(buildAssetRow);
+    let rows = filterAssetRows(allRows, blade.state);
     rows = sortAssetRows(rows, blade.state);
     const defs = ASSET_COLS;
     const vis = getVisibleCols("assets", defs);
     const visibleDefs = defs.filter(d=>vis.has(d.key));
     const ACR_FILTER_OPTIONS = [["9-10","9-10"],["7-8","7-8"],["4-6","4-6"],["1-3","1-3"]];
-    const AES_FILTER_OPTIONS = [["Critical","Critical"],["High","High"],["Medium","Medium"],["Low","Low"]];
+    const AES_FILTER_OPTIONS = [["Critical","Critical"],["High","High"],["Medium","Medium"],["Low","Low"],["OK","OK"]];
+    const OS_FILTER_OPTIONS = Array.from(new Set(allRows.map(r=>r.os))).sort((a,b)=>a.localeCompare(b)).map(o=>[o,o]);
     const header = visibleDefs.map(d=>{
       if(d.key === "acr") return thCellHtml(blade, "acr", d.label, {filterKey:"acr", filterOptions:ACR_FILTER_OPTIONS});
       if(d.key === "aes") return thCellHtml(blade, "aes", d.label, {filterKey:"aes", filterOptions:AES_FILTER_OPTIONS});
+      if(d.key === "os") return thCellHtml(blade, "os", d.label, {filterKey:"os", filterOptions:OS_FILTER_OPTIONS});
       return `<th data-blade-id="${blade.id}" data-action="sort" data-key="${d.key}">${esc(d.label)}${sortIcon(blade.state,d.key)}</th>`;
     }).join("");
     const bodyRows = rows.length===0 ? `<tr class="empty-row"><td colspan="${Math.max(1,visibleDefs.length)}">no assets match the current filters</td></tr>` :
@@ -1667,6 +1755,7 @@
             case "aes": return `<td>${aesBadgeHtml(r.aes)}</td>`;
             case "ip": return `<td class="src">${esc(r.host.hostIp||"—")}</td>`;
             case "role": return `<td class="src">${esc(r.host.role||"—")}</td>`;
+            case "os": return `<td class="src">${esc(r.os||"—")}</td>`;
             case "stigCount": return `<td>${r.host.stigs.length}</td>`;
             case "total": return `<td>${r.total}</td>`;
             case "open": return `<td><span class="status-pill Open">${r.open}</span></td>`;
@@ -1741,10 +1830,7 @@
     const defs = STIG_COLS;
     const vis = getVisibleCols("stigs", defs);
     const visibleDefs = defs.filter(d=>vis.has(d.key));
-    const header = visibleDefs.map(d=>{
-      if(d.key === "open") return thCellHtml(blade, "open", d.label, {filterKey:"hasOpen", filterOptions:STIG_HASOPEN_FILTER_OPTIONS});
-      return `<th data-blade-id="${blade.id}" data-action="sort" data-key="${d.key}">${esc(d.label)}${sortIcon(blade.state,d.key)}</th>`;
-    }).join("");
+    const header = visibleDefs.map(d=> `<th data-blade-id="${blade.id}" data-action="sort" data-key="${d.key}">${esc(d.label)}${sortIcon(blade.state,d.key)}</th>`).join("");
     const bodyRows = rows.length===0 ? `<tr class="empty-row"><td colspan="${Math.max(1,visibleDefs.length)}">no STIGs match the current filters</td></tr>` :
       rows.map(r=>{
         const a = r.asset;
@@ -1808,6 +1894,7 @@
       const acrVal = hostRec ? getACR(hostKey, hostRec).value : 5;
       a.vulns.forEach(v=> vulns.push(Object.assign({}, v, {
         _sourceLabel:(a.hostName||a.fileName), _sourceAssetId:a.id,
+        _stigLabel:(a.stigTitle||a.fileName),
         _criticality: findingCriticality(acrVal, v.severity), _acrBand: acrBand(acrVal)
       })));
     });
@@ -1815,12 +1902,13 @@
     const filtered = filterVulns(vulns, blade.state);
     const defs = FINDING_COLS;
     const sourceOptions = Array.from(new Set(vulns.map(v=>v._sourceLabel).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+    const stigOptions = Array.from(new Set(vulns.map(v=>v._stigLabel).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
 
     return `
       <div class="blade-meta"><span>Total rules: <b>${vulns.length}</b></span></div>
-      <div style="margin-top:6px;">${complianceBlockHtml(vulns)}</div>
+      <div style="margin-top:6px;">${complianceBlockHtml(filtered)}</div>
       ${controlsHtml(blade.id, blade.state, defs, "findings")}
-      ${findingsTableHtml(blade, filtered, true, sourceOptions)}`;
+      ${findingsTableHtml(blade, filtered, true, sourceOptions, undefined, undefined, stigOptions)}`;
   }
 
   function renderFindingDetail(blade){
@@ -1971,6 +2059,18 @@
     $$(".rail-item").forEach(r => r.classList.toggle("active", r.dataset.menu === rootMenu));
   }
 
+  // Redraws the scatter chart's SVG viewBox to exactly match its wrapper's
+  // rendered pixel size, so the chart fills the panel edge-to-edge instead
+  // of being letterboxed to a fixed aspect ratio. Re-run after any (re)paint
+  // and on resize/tab-switch, since the wrapper's size can change.
+  function resizeScatterCharts(){
+    $$(".scatter-wrap").forEach(wrap=>{
+      const w = wrap.clientWidth, h = wrap.clientHeight;
+      if(w < 10 || h < 10) return;
+      wrap.innerHTML = scatterPlotSvg(lastDashboardRows, Math.round(w), Math.round(h));
+    });
+  }
+
   function fullRebuildBladeStack(){
     const sc = $("#bladeScroll");
     sc.innerHTML = bladeStack.map((b, idx) => `
@@ -1978,6 +2078,7 @@
         ${bladeHeaderHtml(b, idx)}
         <div class="blade-body">${bladeBodyHtml(b, idx)}</div>
       </div>`).join("");
+    requestAnimationFrame(resizeScatterCharts);
   }
 
   // Reconciles the blade DOM with bladeStack without touching nodes that
@@ -2006,6 +2107,7 @@
       }
       prevEl = el;
     });
+    requestAnimationFrame(resizeScatterCharts);
   }
 
   // Refreshes only one blade's body content — used for filter/sort/search/
@@ -2016,6 +2118,7 @@
     const b = bladeStack[idx];
     const el = document.querySelector(`[data-blade-id="${bladeId}"] .blade-body`);
     if(el) el.innerHTML = bladeBodyHtml(b, idx);
+    requestAnimationFrame(resizeScatterCharts);
   }
 
   function refreshDependentBlades(predicate){
@@ -2023,7 +2126,7 @@
   }
 
   function goMenu(menu){
-    closeColMenu(); closeColFilterMenu(); closeWidgetMenu(); hideTooltip();
+    closeColMenu(); closeColFilterMenu(); hideTooltip();
     bladeStack = [];
     const blade = newBlade(menu, MENU_TITLE[menu] || "Dashboard", {});
     blade.__menu = menu;
@@ -2041,7 +2144,7 @@
   });
 
   function openBlade(depth, type, title, params){
-    closeColMenu(); closeColFilterMenu(); closeWidgetMenu(); hideTooltip();
+    closeColMenu(); closeColFilterMenu(); hideTooltip();
     bladeStack = bladeStack.slice(0, depth);
     bladeStack.push(newBlade(type, title, params));
     syncBladeStack();
@@ -2052,7 +2155,7 @@
   }
 
   function closeBladeAt(depth){
-    closeColMenu(); closeColFilterMenu(); closeWidgetMenu(); hideTooltip();
+    closeColMenu(); closeColFilterMenu(); hideTooltip();
     bladeStack = bladeStack.slice(0, depth);
     syncBladeStack();
   }
@@ -2100,6 +2203,7 @@
   });
   window.addEventListener("scroll", hideTooltip, true);
   window.addEventListener("resize", hideTooltip);
+  window.addEventListener("resize", resizeScatterCharts);
 
   let colMenuState = null; // {menuEl, btnEl, bladeId, prefKey}
   function closeColMenu(){
@@ -2166,63 +2270,6 @@
   bladeScroll.addEventListener("scroll", closeColMenu, true);
 
   // ==================================================================
-  // Dashboard "Widgets ▾" picker — same floating-overlay approach as the
-  // column picker above, but toggles which dashboard panels render at all
-  // rather than which table columns show. Visibility lives on the
-  // dashboard blade's own state.widgetVis Set.
-  // ==================================================================
-  let widgetMenuState = null; // {menuEl, btnEl, bladeId}
-  function closeWidgetMenu(){
-    if(!widgetMenuState) return;
-    if(widgetMenuState.btnEl) widgetMenuState.btnEl.classList.remove("open");
-    widgetMenuState.menuEl.remove();
-    widgetMenuState = null;
-  }
-  function openWidgetMenuFor(btnEl){
-    const bladeId = btnEl.dataset.bladeId;
-    const blade = bladeStack.find(b=>b.id===bladeId);
-    if(!blade) return;
-    const vis = blade.state.widgetVis;
-    const menu = document.createElement("div");
-    menu.className = "floating-colmenu";
-    menu.innerHTML = DASHBOARD_WIDGETS.map(w=>`<label class="colpicker-item"><input type="checkbox" data-action="toggle-widget" data-blade-id="${bladeId}" data-widget="${w.key}" ${vis.has(w.key)?"checked":""}> ${esc(w.label)}</label>`).join("");
-    document.body.appendChild(menu);
-    positionColMenu(btnEl, menu);
-    btnEl.classList.add("open");
-    widgetMenuState = {menuEl:menu, btnEl, bladeId};
-
-    menu.addEventListener("click", e=> e.stopPropagation());
-    menu.addEventListener("change", e=>{
-      const wEl = e.target.closest('[data-action="toggle-widget"]');
-      if(!wEl) return;
-      const b = bladeStack.find(x=>x.id===wEl.dataset.bladeId);
-      if(!b) return;
-      const key = wEl.dataset.widget;
-      if(b.state.widgetVis.has(key)) b.state.widgetVis.delete(key); else b.state.widgetVis.add(key);
-      refreshBlade(b.id);
-      // The blade body (and its Widgets button) was just replaced —
-      // reattach the menu to the fresh button so it stays open and
-      // correctly positioned across further toggles.
-      const newBtn = document.querySelector(`[data-blade-id="${bladeId}"] [data-action="widgetpicker-toggle"]`);
-      if(newBtn && widgetMenuState){
-        widgetMenuState.btnEl = newBtn;
-        newBtn.classList.add("open");
-        positionColMenu(newBtn, menu);
-      } else {
-        closeWidgetMenu();
-      }
-    });
-  }
-  document.addEventListener("click", e=>{
-    if(!widgetMenuState) return;
-    if(widgetMenuState.menuEl.contains(e.target) || widgetMenuState.btnEl === e.target || (widgetMenuState.btnEl && widgetMenuState.btnEl.contains(e.target))) return;
-    closeWidgetMenu();
-  });
-  document.addEventListener("keydown", e=>{ if(e.key === "Escape") closeWidgetMenu(); });
-  window.addEventListener("resize", closeWidgetMenu);
-  bladeScroll.addEventListener("scroll", closeWidgetMenu, true);
-
-  // ==================================================================
   // Excel-style per-column filter menus (status / severity / criticality /
   // source). Same floating-overlay approach as the column picker above —
   // a Set per column in blade.state.colFilters; an empty Set means "no
@@ -2283,8 +2330,6 @@
       if(set.has(value)) set.delete(value); else set.add(value);
       if(set.size === allValues.length) set.clear();
       refreshBlade(b.id);
-      const clearEl = menu.querySelector('[data-action="clear-col-filter"]');
-      if(clearEl) clearEl.classList.toggle("disabled", set.size === 0);
       const newBtn = document.querySelector(`[data-blade-id="${bladeId}"] [data-action="col-filter-toggle"][data-filter-key="${filterKey}"]`);
       if(newBtn && colFilterState){
         colFilterState.btnEl = newBtn;
@@ -2305,19 +2350,11 @@
   bladeScroll.addEventListener("scroll", closeColFilterMenu, true);
 
   bladeScroll.addEventListener("click", e=>{
-    const widgetBtn = e.target.closest('[data-action="widgetpicker-toggle"]');
-    if(widgetBtn){
-      e.stopPropagation();
-      if(widgetMenuState && widgetMenuState.btnEl === widgetBtn){ closeWidgetMenu(); }
-      else { closeWidgetMenu(); closeColMenu(); closeColFilterMenu(); openWidgetMenuFor(widgetBtn); }
-      return;
-    }
-
     const colBtn = e.target.closest('[data-action="colpicker-toggle"]');
     if(colBtn){
       e.stopPropagation();
       if(colMenuState && colMenuState.btnEl === colBtn){ closeColMenu(); }
-      else { closeColMenu(); closeColFilterMenu(); closeWidgetMenu(); openColMenuFor(colBtn); }
+      else { closeColMenu(); closeColFilterMenu(); openColMenuFor(colBtn); }
       return;
     }
 
@@ -2325,7 +2362,7 @@
     if(filterBtn){
       e.stopPropagation();
       if(colFilterState && colFilterState.btnEl === filterBtn){ closeColFilterMenu(); }
-      else { closeColFilterMenu(); closeColMenu(); closeWidgetMenu(); openColFilterMenuFor(filterBtn); }
+      else { closeColFilterMenu(); closeColMenu(); openColFilterMenuFor(filterBtn); }
       return;
     }
 
@@ -2347,6 +2384,8 @@
       if(drillEl.dataset.presetCrit) params.presetCrit = drillEl.dataset.presetCrit;
       if(drillEl.dataset.presetAcrband) params.presetAcrBand = drillEl.dataset.presetAcrband;
       if(drillEl.dataset.presetAes) params.presetAES = drillEl.dataset.presetAes;
+      if(drillEl.dataset.presetOs) params.presetOS = drillEl.dataset.presetOs;
+      if(drillEl.dataset.presetStig) params.presetStig = drillEl.dataset.presetStig;
       openBlade(idx+1, type, title, params);
       return;
     }
@@ -2365,6 +2404,20 @@
       if(tbody){ tbody.querySelectorAll("tr.active-row").forEach(tr=>tr.classList.remove("active-row")); findingEl.classList.add("active-row"); }
       blade.state.activeVulnId = vuln.id;
       openBlade(idx+1, "findingDetail", vuln.ruleVer || vuln.ruleTitle, {vuln, parentBladeId: blade.id});
+      return;
+    }
+
+    const filterEl = e.target.closest('[data-action="set-filter"]');
+    if(filterEl){
+      const blade = bladeStack.find(b=>b.id===filterEl.dataset.bladeId);
+      if(blade){ blade.state[filterEl.dataset.kind] = filterEl.dataset.v; refreshBlade(blade.id); }
+      return;
+    }
+
+    const dashTabEl = e.target.closest('[data-action="dash-tab"]');
+    if(dashTabEl){
+      const blade = bladeStack.find(b=>b.id===dashTabEl.dataset.bladeId);
+      if(blade){ blade.state.dashboardTab = dashTabEl.dataset.tab; refreshBlade(blade.id); }
       return;
     }
 
