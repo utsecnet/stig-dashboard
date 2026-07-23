@@ -435,8 +435,9 @@
 
   function formatToday(){
     const d = new Date();
-    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    return `${d.getFullYear()}-${mm}-${dd}`;
   }
   const CHANGELOG = [
     {version:"1.0", date: formatToday(), notes:"Initial release"}
