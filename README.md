@@ -24,7 +24,7 @@ Drop any combination of `.ckl` / `.cklb` files at once — the dashboard accepts
 
 ## How the CSV ties in
 
-`acr override.csv` overrides the dashboard's auto-calculated Asset Criticality Rating for specific hosts. Format:
+`acr override.csv` overrides the dashboard's auto-calculated Asset Criticality Rating for specific hosts. **ACAS is meant to be the source of truth for these values** — export your assets and their ACR ratings from ACAS, reshape that export into the two-column format below, and import it here rather than hand-assigning ACRs. Format:
 
 ```
 hostname, acr
@@ -32,8 +32,9 @@ it-rjohnson-lap, 5
 ```
 
 - `hostname` must match a loaded asset's host name (case-insensitive) — e.g. it matches the host name embedded in `IT-RJOHNSON-LAP_COMBINED_20260722-172034.cklb`.
-- `acr` is an integer 1–10.
+- `acr` is an integer 1–10, taken directly from each asset's ACR in ACAS.
 - Upload it via **↑ ACR Overrides (CSV)** (found in the Assets view) *after* loading the checklist files it references — unmatched hostnames and invalid values are reported back after upload.
+- Any host not covered by the CSV falls back to the dashboard's own auto-inferred ACR (from asset role/hostname/STIG signals) — treat that as a stand-in only until the real ACAS value is imported.
 
 ACR (auto-inferred from asset role/hostname/STIG signals, or overridden by the CSV) combines with each finding's severity — same principle as Nessus weighting a CVSS score by asset criticality — to drive:
 - The **ACR × CAT criticality matrix**: CAT I/II/III severity + ACR band → Low/Medium/High/Critical per finding
