@@ -195,6 +195,18 @@
   .aes-count-block .crit-tiles{gap:4px;}
   .aes-count-block .crit-tile{padding:4px 10px;border-radius:5px;}
   .aes-count-block .crit-tile .n{font-size:14px;}
+  .scatter-pt[data-action="drill"]{cursor:pointer;transition:filter .1s;}
+  .scatter-pt[data-action="drill"]:hover{filter:brightness(1.35);stroke:#e7edf0;}
+  .pareto-panel{background:var(--panel-raised);border:1px solid var(--hairline);border-radius:6px;padding:16px;margin-bottom:18px;}
+  .pareto-panel .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;flex-wrap:wrap;gap:6px;}
+  .pareto-panel .head h3{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0;font-weight:600;}
+  .pareto-panel .head .overall{font-family:var(--mono);font-size:11px;color:var(--dim);}
+  .pareto-svg{width:100%;height:auto;display:block;margin-top:6px;}
+  .pareto-bar[data-action="drill"]{cursor:pointer;transition:filter .1s;}
+  .pareto-bar[data-action="drill"]:hover{filter:brightness(1.3);}
+  .pareto-legend{display:flex;gap:16px;margin-top:8px;font-size:10px;color:var(--dim);font-family:var(--mono);}
+  .pareto-legend span{display:inline-flex;align-items:center;gap:5px;}
+  .pareto-legend i{width:9px;height:9px;border-radius:2px;display:inline-block;}
   .aes-count-block .crit-tile .lbl{font-size:9px;margin-top:0;}
 
   /* ===== CES / donut chart row (Assets tab) ===== */
@@ -508,6 +520,7 @@
   let bladeStack = [];
   let bladeSeq = 0;
   let lastDashboardRows = []; // most recently computed dashboard asset rows, for scatter chart resize redraws
+  let lastDashboardBladeIndex = null; // bladeIndex those rows belong to, so resize redraws keep working drill links
   const acrOverrides = new Map(); // hostKey -> integer 1-10
 
   const $ = (sel, root) => (root||document).querySelector(sel);
@@ -1213,7 +1226,7 @@
 
   // Scatter plot — one point per host, X = AES score, Y = total STIG finding
   // count, with the same 300/500/700/900 benchmark lines used on the gauge.
-  function scatterPlotSvg(rows, W, H){
+  function scatterPlotSvg(rows, W, H, bladeIndex){
     W = W || 480; H = H || 300;
     const mL = 46, mR = 18, mT = 16, mB = 42;
     const pw = W-mL-mR, ph = H-mT-mB;
@@ -1240,9 +1253,11 @@
       return `<text x="${x.toFixed(1)}" y="${mT+ph+16}" text-anchor="${v===0?'start':'end'}" font-size="9" font-family="ui-monospace,monospace" fill="#526270">${v}</text>`;
     }).join("");
 
+    const canDrill = bladeIndex !== null && bladeIndex !== undefined;
     const points = rows.map(r=>{
       const cx = xOf(r.aes), cy = yOf(r.total);
-      return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5" fill="${bandColor(r.aes)}" fill-opacity="0.85" stroke="#0a0f13" stroke-width="1"><title>${esc(r.host.hostName)} — AES ${r.aes}, ${r.total} findings</title></circle>`;
+      const drillAttrs = canDrill ? `data-action="drill" data-blade-index="${bladeIndex}" data-type="assetDetail" data-title="${esc(r.host.hostName)}" data-hostkey="${esc(r.host.hostKey)}"` : "";
+      return `<circle class="scatter-pt" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5" fill="${bandColor(r.aes)}" fill-opacity="0.85" stroke="#0a0f13" stroke-width="1" ${drillAttrs}><title>${esc(r.host.hostName)} — AES ${r.aes}, ${r.total} findings</title></circle>`;
     }).join("");
 
     return `<svg viewBox="0 0 ${W} ${H}" class="scatter-svg">
@@ -1257,11 +1272,11 @@
     </svg>`;
   }
 
-  function scatterPanelHtml(rows){
+  function scatterPanelHtml(rows, bladeIndex){
     if(!rows.length) return "";
     return `<div class="scatter-panel">
-      <div class="head"><h3>AES vs. Finding Count</h3><span class="overall tooltip" data-tip="Each point is one asset — X axis is its AES (Asset Exposure Score), Y axis is its total STIG finding count. Dashed lines mark the same 300/500/700/900 AES benchmarks used on the CES gauge.">what is this?</span></div>
-      <div class="scatter-wrap">${scatterPlotSvg(rows)}</div>
+      <div class="head"><h3>AES vs. Finding Count</h3><span class="overall tooltip" data-tip="Each point is one asset — click a dot to open that asset. X axis is its AES (Asset Exposure Score), Y axis is its total STIG finding count. Dashed lines mark the same 300/500/700/900 AES benchmarks used on the CES gauge.">what is this?</span></div>
+      <div class="scatter-wrap">${scatterPlotSvg(rows, undefined, undefined, bladeIndex)}</div>
     </div>`;
   }
 
@@ -1277,6 +1292,93 @@
         ${["Critical","High","Medium","Low","OK"].map(band=>`<div class="crit-tile ${cls[band]}" data-action="drill" data-blade-index="${bladeIndex}" data-type="assets" data-title="${band} AES Assets" data-preset-aes="${band}">
           <div class="n">${counts[band]}</div><div class="lbl">${band}</div>
         </div>`).join("")}
+      </div>
+    </div>`;
+  }
+
+  // Requirement — Pareto (80/20) chart: assets sorted by AES descending, with
+  // the "vital few" whose AES cumulatively makes up the first 80% of total
+  // AES across all assets marked red, the rest yellow.
+  function paretoBuckets(rows){
+    const sorted = rows.slice().sort((a,b)=> b.aes - a.aes);
+    const total = sorted.reduce((s,r)=>s+r.aes, 0);
+    let cum = 0;
+    return sorted.map(r=>{
+      const before = cum;
+      cum += r.aes;
+      const cumPct = total ? (cum/total*100) : 0;
+      const isVital = total ? ((before/total*100) < 80) : false;
+      return {row:r, cumPct, isVital};
+    });
+  }
+
+  function paretoSvg(rows, bladeIndex){
+    const W = 900, H = 300;
+    const mL = 46, mR = 46, mT = 16, mB = 30;
+    const pw = W-mL-mR, ph = H-mT-mB;
+    const buckets = paretoBuckets(rows);
+    const n = Math.max(1, buckets.length);
+    const barGap = n > 60 ? 0 : 1;
+    const barW = Math.max(0.6, pw/n - barGap);
+    const yOf = aes => mT + ph - (Math.max(0,Math.min(1000,aes))/1000)*ph;
+    const yPctOf = pct => mT + ph - (Math.max(0,Math.min(100,pct))/100)*ph;
+
+    const yTicks = [0,250,500,750,1000].map(v=>{
+      const y = yOf(v);
+      return `<line x1="${mL}" y1="${y.toFixed(1)}" x2="${mL+pw}" y2="${y.toFixed(1)}" stroke="#1c2830" stroke-width="1"/>
+        <text x="${mL-8}" y="${y.toFixed(1)}" text-anchor="end" dominant-baseline="middle" font-size="9" font-family="ui-monospace,monospace" fill="#8196a3">${v}</text>`;
+    }).join("");
+
+    const pctTicks = [0,20,40,60,80,100].map(v=>{
+      const y = yPctOf(v);
+      return `<text x="${mL+pw+8}" y="${y.toFixed(1)}" text-anchor="start" dominant-baseline="middle" font-size="9" font-family="ui-monospace,monospace" fill="#8196a3">${v}%</text>`;
+    }).join("");
+
+    const eightyY = yPctOf(80);
+    const eightyLine = `<line x1="${mL}" y1="${eightyY.toFixed(1)}" x2="${mL+pw}" y2="${eightyY.toFixed(1)}" stroke="#e08a3c" stroke-width="1" stroke-dasharray="4 3"/>`;
+
+    const canDrill = bladeIndex !== null && bladeIndex !== undefined;
+    const bars = buckets.map((b,i)=>{
+      const x = mL + i*(pw/n);
+      const y = yOf(b.row.aes);
+      const h = (mT+ph) - y;
+      const color = b.isVital ? "#e5484d" : "#d9be4a";
+      const drillAttrs = canDrill ? `data-action="drill" data-blade-index="${bladeIndex}" data-type="assetDetail" data-title="${esc(b.row.host.hostName)}" data-hostkey="${esc(b.row.host.hostKey)}"` : "";
+      return `<rect class="pareto-bar" x="${x.toFixed(2)}" y="${y.toFixed(1)}" width="${barW.toFixed(2)}" height="${Math.max(0,h).toFixed(1)}" fill="${color}" ${drillAttrs}><title>${esc(b.row.host.hostName)} — AES ${b.row.aes} (cumulative ${b.cumPct.toFixed(1)}% of total)</title></rect>`;
+    }).join("");
+
+    const linePts = buckets.map((b,i)=>{
+      const x = mL + i*(pw/n) + barW/2;
+      const y = yPctOf(b.cumPct);
+      return `${x.toFixed(2)},${y.toFixed(1)}`;
+    }).join(" ");
+
+    const vitalCount = buckets.filter(b=>b.isVital).length;
+
+    const svg = `<svg viewBox="0 0 ${W} ${H}" class="pareto-svg">
+      ${yTicks}
+      <line x1="${mL}" y1="${mT}" x2="${mL}" y2="${mT+ph}" stroke="#324450" stroke-width="1"/>
+      <line x1="${mL}" y1="${mT+ph}" x2="${mL+pw}" y2="${mT+ph}" stroke="#324450" stroke-width="1"/>
+      <line x1="${mL+pw}" y1="${mT}" x2="${mL+pw}" y2="${mT+ph}" stroke="#233039" stroke-width="1"/>
+      ${eightyLine}
+      ${pctTicks}
+      ${bars}
+      <polyline points="${linePts}" fill="none" stroke="#4ea8de" stroke-width="1.5"/>
+      <text x="${mL+pw/2}" y="${H-6}" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#8196a3" letter-spacing="1">ASSETS, SORTED BY AES (HIGH → LOW)</text>
+    </svg>`;
+    return {svg, vitalCount};
+  }
+
+  function paretoPanelHtml(rows, bladeIndex){
+    if(!rows.length) return "";
+    const {svg, vitalCount} = paretoSvg(rows, bladeIndex);
+    return `<div class="pareto-panel">
+      <div class="head"><h3>Pareto — AES Concentration (80/20)</h3><span class="overall tooltip" data-tip="Assets sorted by AES, highest first. Red bars are the 'vital few' whose AES cumulatively accounts for the first 80% of total exposure across all assets; the blue line tracks that running cumulative percentage against the right-hand axis. Click a bar to open that asset.">what is this?</span></div>
+      ${svg}
+      <div class="pareto-legend">
+        <span><i style="background:#e5484d"></i>Vital few — ${vitalCount} of ${rows.length} assets drive ~80% of total AES</span>
+        <span><i style="background:#d9be4a"></i>Remaining assets</span>
+        <span><i style="background:#4ea8de"></i>Cumulative % of total AES</span>
       </div>
     </div>`;
   }
@@ -1823,6 +1925,7 @@
     const hosts = groupAssetsByHost();
     const rows = hosts.map(buildAssetRow);
     lastDashboardRows = rows;
+    lastDashboardBladeIndex = bladeIndex;
     const activeTab = blade.state.dashboardTab || "assets";
 
     const tabHtml = activeTab === "findings" ? (()=>{
@@ -1844,7 +1947,8 @@
         ${cesPanelHtml(rows)}
         ${donutPanelHtml("Assets by Operating System", "Each asset's OS is inferred from the most OS-defining STIG title loaded for it. Assets with no recognizable OS-defining STIG are grouped under Other / Unspecified.", osDonutEntries(bladeIndex, hosts), "ASSETS", "no assets loaded yet")}
       </div>
-      ${rows.length ? `<div class="scatter-row">${scatterPanelHtml(rows)}${aesCountBlockHtml(bladeIndex, rows)}</div>` : ""}`;
+      ${rows.length ? `<div class="scatter-row">${scatterPanelHtml(rows, bladeIndex)}${aesCountBlockHtml(bladeIndex, rows)}</div>` : ""}
+      ${rows.length ? paretoPanelHtml(rows, bladeIndex) : ""}`;
 
     return `
       <div class="dash-tabs">
@@ -2040,9 +2144,14 @@
     const sourceOptions = Array.from(new Set(vulns.map(v=>v._sourceLabel).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
     const stigOptions = Array.from(new Set(vulns.map(v=>v._stigLabel).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
 
+    // The status tiles / compliance-by-CAT panels must reflect whatever this
+    // blade was filtered to (either a preset from the drill that opened it,
+    // or filters the user has since applied) rather than every finding in
+    // the dataset — otherwise they never change no matter what was clicked.
+    const isFiltered = filtered.length !== vulns.length;
     return `
-      <div class="blade-meta"><span>Total rules: <b>${vulns.length}</b></span></div>
-      <div style="margin-top:6px;">${complianceBlockHtml(vulns)}</div>
+      <div class="blade-meta"><span>${isFiltered ? `Showing <b>${filtered.length}</b> of <b>${vulns.length}</b> total rules` : `Total rules: <b>${vulns.length}</b>`}</span></div>
+      <div style="margin-top:6px;">${complianceBlockHtml(filtered)}</div>
       ${controlsHtml(blade.id, blade.state, defs, "findings")}
       ${findingsTableHtml(blade, filtered, true, sourceOptions, undefined, undefined, stigOptions)}`;
   }
@@ -2203,7 +2312,7 @@
     $$(".scatter-wrap").forEach(wrap=>{
       const w = wrap.clientWidth, h = wrap.clientHeight;
       if(w < 10 || h < 10) return;
-      wrap.innerHTML = scatterPlotSvg(lastDashboardRows, Math.round(w), Math.round(h));
+      wrap.innerHTML = scatterPlotSvg(lastDashboardRows, Math.round(w), Math.round(h), lastDashboardBladeIndex);
     });
   }
 
