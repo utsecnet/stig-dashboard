@@ -161,6 +161,7 @@
   @keyframes slideIn{from{transform:translateX(-14px);opacity:0;}to{transform:translateX(0);opacity:1;}}
   .blade-w-md{width:460px;}
   .blade-w-lg{width:820px;}
+  .blade-w-xl{width:1080px;}
   .blade-w-auto{width:max-content;min-width:460px;max-width:min(90vw,1200px);}
   .blade-header{
     position:sticky;top:0;z-index:5;background:var(--panel);
@@ -366,15 +367,6 @@
   }
   .search-input::placeholder{color:var(--dim);}
   .search-input:focus{outline:none;border-color:var(--hairline-bright);}
-  .filter-group{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
-  .chip{
-    font-family:var(--mono);font-size:10.5px;padding:5px 10px;border-radius:20px;
-    border:1px solid var(--hairline-bright);color:var(--muted);cursor:pointer;white-space:nowrap;
-  }
-  .chip.on{color:var(--void);font-weight:700;border-color:transparent;}
-  .chip[data-v=all].on{background:var(--text);}
-  .chip[data-v=hasOpen].on{background:var(--open);}
-  .chip[data-v=fullyClosed].on{background:var(--naf);}
   .export-btn{
     font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--panel-raised);
     border:1px solid var(--hairline-bright);padding:7px 12px;border-radius:4px;cursor:pointer;
@@ -483,6 +475,7 @@
 
   @media (max-width:900px){
     .blade-w-lg{width:min(94vw,820px);}
+    .blade-w-xl{width:min(96vw,1080px);}
     .blade-w-md{width:min(85vw,460px);}
     .blade-w-auto{min-width:min(90vw,460px);max-width:94vw;}
     .rail{width:64px;}
@@ -550,7 +543,7 @@
   }
   const CHANGELOG = [
     {version:"2026.1", date: formatToday(), notes:["Initial release"]},
-    {version:"2026.1.01", date: formatToday(), features:["Added CKL/CKLB file import indicator"], fixes:[]}
+    {version:"2026.1.01", date: formatToday(), features:["Added CKL/CKLB file import indicator", "Added Vuln ID column to Findings tables", "Widened Findings blade for readability"], fixes:[]}
   ];
 
   let assets = []; // {id, fileName, hostName, hostIp, stigTitle, stigVersion, releaseInfo, vulns:[...]}
@@ -1082,8 +1075,11 @@
     return "OK";
   }
 
-  function acrBadgeHtml(hostKey, host){
-    const info = getACR(hostKey, host);
+  // Takes an already-computed getACR() result rather than a hostKey/host pair
+  // so callers that already looked up ACR for this host (buildAssetRow,
+  // renderAssetDetail) don't re-run the role-inference scan a second time
+  // just to render the badge.
+  function acrBadgeHtml(info){
     const tip = info.isOverride
       ? `Manually overridden to ${info.value}/10. Auto-calculated value was ${info.auto}/10 (${info.matchedRole}${info.exposed?", internet-exposed":""}).`
       : `Auto-calculated ${info.value}/10 from device role signals: ${info.matchedRole}${info.exposed?" (internet-exposed, +1)":""}.`;
@@ -1595,6 +1591,7 @@
   ];
   const FINDING_COLS = [
     {key:"id", label:"STIG ID", default:true, locked:true},
+    {key:"vulnId", label:"Vuln ID", default:true},
     {key:"sev", label:"Severity", default:true},
     {key:"status", label:"Status", default:true},
     {key:"title", label:"Rule Title", default:true},
@@ -1647,6 +1644,7 @@
       if(state.sortKey==="sev") r = sevRank[a.severity]-sevRank[b.severity];
       else if(state.sortKey==="status") r = statRank[a.status]-statRank[b.status];
       else if(state.sortKey==="id") r = (a.ruleVer||"").localeCompare(b.ruleVer||"");
+      else if(state.sortKey==="vulnId") r = (a.vulnNum||"").localeCompare(b.vulnNum||"", undefined, {numeric:true});
       else if(state.sortKey==="title") r = (a.ruleTitle||"").localeCompare(b.ruleTitle||"");
       else if(state.sortKey==="crit") r = (critRank[a._criticality]??9)-(critRank[b._criticality]??9);
       else if(state.sortKey==="source") r = (a._sourceLabel||"").localeCompare(b._sourceLabel||"");
@@ -1781,6 +1779,7 @@
           const cells = visibleDefs.map(d=>{
             switch(d.key){
               case "id": return `<td class="id">${esc(v.ruleVer||v.vulnNum)}</td>`;
+              case "vulnId": return `<td class="id">${esc(v.vulnNum||"—")}</td>`;
               case "sev": return `<td class="sev"><span class="sev-tag ${SEV_CLASS[v.severity]||"c2"}">${SEV_LABEL[v.severity]||v.severity}</span></td>`;
               case "status": return `<td><span class="status-pill ${v.status}">${STATUS_LABEL[v.status]}</span></td>`;
               case "title": return `<td class="title">${esc(v.ruleTitle)}</td>`;
@@ -1837,7 +1836,8 @@
   function bladeWidthClass(type){
     if(type === "import") return "blade-w-auto";
     if(type === "findingDetail" || type === "changelog" || type === "changelogDetail") return "blade-w-md";
-    return "blade-w-lg"; // dashboard, assets, assetDetail, stigs, findings, stigDetail
+    if(type === "findings") return "blade-w-xl"; // extra room for the Rule Title column with more columns visible
+    return "blade-w-lg"; // dashboard, assets, assetDetail, stigs, stigDetail
   }
 
   function groupAssetsByHost(){
@@ -1862,7 +1862,7 @@
     const compliance = total ? Math.round(((naf+na)/total)*100) : 100;
     const acrInfo = getACR(host.hostKey, host);
     const aesInfo = computeAES(host, acrInfo.value);
-    return {host, total, open, nr, naf, na, compliance, acr:acrInfo.value, acrOverride:acrInfo.isOverride, aes:aesInfo.aes, os:inferHostOS(host)};
+    return {host, total, open, nr, naf, na, compliance, acr:acrInfo.value, acrOverride:acrInfo.isOverride, acrInfo, aes:aesInfo.aes, os:inferHostOS(host)};
   }
 
   function filterAssetRows(rows, state){
@@ -2051,7 +2051,7 @@
         const cells = visibleDefs.map(d=>{
           switch(d.key){
             case "name": return `<td class="title">${esc(r.host.hostName)}</td>`;
-            case "acr": return `<td>${acrBadgeHtml(r.host.hostKey, r.host)}</td>`;
+            case "acr": return `<td>${acrBadgeHtml(r.acrInfo)}</td>`;
             case "aes": return `<td>${aesBadgeHtml(r.aes)}</td>`;
             case "ip": return `<td class="src">${esc(r.host.hostIp||"—")}</td>`;
             case "role": return `<td class="src">${esc(r.host.role||"—")}</td>`;
@@ -2095,7 +2095,7 @@
       <div class="asset-score-row">
         <div class="score-block">
           <div class="score-label">ACR (Asset Criticality Rating)</div>
-          ${acrBadgeHtml(host.hostKey, host)}
+          ${acrBadgeHtml(acrInfo)}
           <select class="acr-override" data-action="set-acr-override" data-hostkey="${esc(host.hostKey)}">
             <option value="auto" ${!acrInfo.isOverride?"selected":""}>Auto (${acrInfo.auto})</option>
             ${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option value="${n}" ${acrInfo.isOverride&&acrInfo.value===n?"selected":""}>Override: ${n}</option>`).join("")}
@@ -2744,13 +2744,6 @@
       if(tbody){ tbody.querySelectorAll("tr.active-row").forEach(tr=>tr.classList.remove("active-row")); findingEl.classList.add("active-row"); }
       blade.state.activeVulnId = vuln.id;
       openBlade(idx+1, "findingDetail", vuln.ruleVer || vuln.ruleTitle, {vuln, parentBladeId: blade.id});
-      return;
-    }
-
-    const filterEl = e.target.closest('[data-action="set-filter"]');
-    if(filterEl){
-      const blade = bladeStack.find(b=>b.id===filterEl.dataset.bladeId);
-      if(blade){ blade.state[filterEl.dataset.kind] = filterEl.dataset.v; refreshBlade(blade.id); }
       return;
     }
 
