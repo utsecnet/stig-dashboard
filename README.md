@@ -2,7 +2,7 @@
 
 A single-file, offline dashboard for browsing and prioritizing DISA STIG checklist results — the same `.ckl` / `.cklb` output produced by **Evaluate-STIG**. Open [stig-dashboard.html](stig-dashboard.html) in a browser; everything runs client-side, nothing is uploaded anywhere.
 
-If you've used **Nessus / ACAS**, this will feel familiar: Nessus weights raw CVSS severity by asset criticality to tell you what to fix first. This dashboard does the same for STIG findings — each finding's severity combines with an **Asset Criticality Rating (ACR)** for its host to produce a per-finding **criticality** and a per-asset **Asset Exposure Score (AES)**, so you can triage STIG results by risk instead of eyeballing raw severity counts.
+If you've used **Nessus / ACAS**, this will feel familiar: Nessus weights raw CVSS severity by asset criticality to tell you what to fix first. This dashboard does the same for STIG findings — each finding's severity combines with an **Asset Criticality Rating (ACR)** for its host to produce a per-finding **criticality** and a per-asset **Asset Exposure Score (AES)**, so you can triage STIG results by risk instead of eyeballing raw severity counts. The Key Performance Indicator (KPI) is a single quantifiable value taken from the average of all organizational assets called the Composit Exposure Score (CES). If this value trends downward, you are doing great. If not, do better!
 
 ## Quick start
 
