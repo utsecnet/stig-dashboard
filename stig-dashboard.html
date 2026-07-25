@@ -200,6 +200,10 @@
   .tile[data-action]{cursor:pointer;transition:transform .1s ease, border-color .1s ease;}
   .tile[data-action]:hover{border-color:var(--hairline-bright);transform:translateY(-1px);}
   .tile[data-action]:active{transform:translateY(0);}
+  .compliance-split-row{display:flex;gap:16px;align-items:stretch;flex-wrap:wrap;margin-top:16px;margin-bottom:16px;}
+  .compliance-split-row > .compliance-block{margin-bottom:0;flex:1;min-width:280px;}
+  .tiles-stack{display:grid;grid-template-columns:repeat(2,minmax(96px,1fr));gap:8px;flex:0 0 220px;}
+  .tiles-stack .tile{padding:8px 10px;display:flex;flex-direction:column;justify-content:center;}
 
   /* ===== AES tile group ===== */
   .ces-panel{background:var(--panel-raised);border:1px solid var(--hairline);border-radius:6px;padding:16px;margin-bottom:18px;}
@@ -231,6 +235,13 @@
   .pareto-bar[data-action="drill"]{cursor:pointer;transition:filter .1s;}
   .pareto-bar[data-action="drill"]:hover{filter:brightness(1.3);}
   .pareto-legend{display:flex;gap:16px;margin-top:8px;font-size:10px;color:var(--dim);font-family:var(--mono);}
+  .trend-panel{background:var(--panel-raised);border:1px solid var(--hairline);border-radius:6px;padding:16px;margin-bottom:0;}
+  .trend-panel .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:6px;}
+  .trend-panel .head.has-badge{display:grid;grid-template-columns:1fr auto 1fr;}
+  .trend-panel .head h3{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0;font-weight:600;}
+  .trend-panel .head .overall{font-family:var(--mono);font-size:11px;color:var(--dim);justify-self:end;}
+  .aes-trend-badge-center{display:flex;justify-content:center;}
+  .trend-svg{width:100%;height:auto;display:block;margin-top:6px;}
   .pareto-legend span{display:inline-flex;align-items:center;gap:5px;}
   .pareto-legend i{width:9px;height:9px;border-radius:2px;display:inline-block;}
   .aes-count-block .crit-tile .lbl{font-size:9px;margin-top:0;}
@@ -321,9 +332,10 @@
   .asset-score-row{display:flex;gap:22px;margin-bottom:16px;flex-wrap:wrap;}
   .score-block{display:flex;flex-direction:column;gap:6px;}
   .score-label{font-family:var(--mono);font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;}
+  .acr-row{display:flex;align-items:center;gap:9px;}
   .acr-badge{display:inline-block;font-family:var(--mono);font-weight:800;font-size:15px;padding:4px 11px;border-radius:5px;background:var(--panel-raised);border:1px solid var(--hairline-bright);color:var(--text);width:fit-content;}
   .aes-badge{display:inline-block;font-family:var(--mono);font-weight:800;font-size:15px;padding:4px 11px;border-radius:5px;width:fit-content;}
-  .acr-override{margin-top:2px;background:var(--panel-raised);border:1px solid var(--hairline-bright);color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 7px;border-radius:4px;}
+  .acr-override{margin-top:0;background:var(--panel-raised);border:1px solid var(--hairline-bright);color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 7px;border-radius:4px;}
 
   /* ===== Tooltips (used for AES / ACR explanations) =====
      Rendered as a JS-positioned overlay appended to <body> — see
@@ -536,14 +548,31 @@
   const SEV_CLASS = {high:"c1", medium:"c2", low:"c3"};
   const MENU_TITLE = {dashboard:"Dashboard", assets:"Assets", stigs:"STIGs", findings:"Findings", import:"Import", changelog:"Change Log"};
 
+  const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  function formatDate(d){
+    return `${MONTH_NAMES[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+  }
+  // ISO 8601 calendar date (yyyy-mm-dd) — used for the Assets table's Last
+  // Scanned column, kept separate from formatDate() so the change log's
+  // "Month Day, Year" style elsewhere is unaffected.
+  function formatDateISO(d){
+    const pad = n => String(n).padStart(2,"0");
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
   function formatToday(){
-    const d = new Date();
-    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+    return formatDate(new Date());
+  }
+  // Parses a scanDate string from parseCKL/parseCKLB (ISO 8601 from CKLB's
+  // evaluate-stig.time, or "yyyy-mm-dd" from CKL's regex fallback) into a
+  // Date, or null if missing/unparseable.
+  function parseScanDate(str){
+    if(!str) return null;
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
   }
   const CHANGELOG = [
     {version:"2026.1", date: formatToday(), notes:["Initial release"]},
-    {version:"2026.1.01", date: formatToday(), features:["Added CKL/CKLB file import indicator", "Added Vuln ID column to Findings tables", "Widened Findings blade for readability"], fixes:[]}
+    {version:"2026.1.01", date: formatToday(), features:["Added CKL/CKLB file import indicator", "Added Vuln ID column to Findings tables", "Widened Findings blade for readability", "Added Last Scanned column to Assets table", "Asset Detail now shows last scanned date", "Added History column (checklist count) to Assets table", "Added AES Over Time chart to Asset Detail", "Tightened Asset Detail layout for space efficiency", "Added CES Over Time chart to top of Dashboard"], fixes:["Removed dead filter-chip code", "Cut redundant ACR recalculation on asset views", "Change log now lists newest release first", "Re-scanned STIGs no longer double-count in totals", "AES no longer saturates and ignores compliance changes", "AES vs Finding Count now counts only open/not-reviewed findings"]}
   ];
 
   let assets = []; // {id, fileName, hostName, hostIp, stigTitle, stigVersion, releaseInfo, vulns:[...]}
@@ -628,6 +657,26 @@
     return "low"; // unrecognized non-blank value (e.g. "none"/CAT IV) — least severe bucket rather than dropped
   }
 
+  // Classic CKL has no structured "scan date" field, but Evaluate-STIG writes
+  // free-text finding details like "...found this to be OPEN on 07/01/2026" —
+  // pull the date out of whichever vuln has it so CKL assets can still show
+  // a Last Scanned date. Returns "yyyy-mm-ddT00:00:00" (deliberately with no
+  // "Z"/offset) so parseScanDate's `new Date(...)` parses it as local
+  // midnight — a bare "yyyy-mm-dd" is parsed as UTC midnight per spec, which
+  // rolls back a day once displayed via local getters in any timezone west
+  // of UTC. Returns "" if no date found.
+  function extractScanDateFromVulns(vulns){
+    for(const v of vulns){
+      const text = v.findingDetails || v.comments || "";
+      const m = text.match(/\bon (\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
+      if(m){
+        const [, mm, dd, yyyy] = m;
+        return `${yyyy}-${mm.padStart(2,"0")}-${dd.padStart(2,"0")}T00:00:00`;
+      }
+    }
+    return "";
+  }
+
   // one CKL file can contain multiple <iSTIG> blocks (multiple STIGs applied to one asset) —
   // emit one dashboard "asset" entry per iSTIG so each STIG can be browsed independently.
   function parseCKL(xmlText, filename){
@@ -686,8 +735,10 @@
       results.push({
         id: filename + "_" + sIdx + "_" + Math.random().toString(36).slice(2,8),
         fileName: filename + (iStigEls.length > 1 ? "  ·  " + (stigTitle||"STIG "+(sIdx+1)) : ""),
+        sourceFile: filename,
         hostName, hostIp, hostFqdn, role,
         stigTitle, stigVersion, releaseInfo,
+        scanDate: extractScanDateFromVulns(vulns),
         vulns
       });
     });
@@ -712,6 +763,9 @@
       const stigTitle = stig.display_name || stig.stig_name || stig.stig_id || "";
       const stigVersion = (stig.version !== undefined && stig.version !== null) ? String(stig.version) : "";
       const releaseInfo = stig.release_info || "";
+      // Evaluate-STIG stamps each STIG's own scan run under evaluate-stig.time
+      // (ISO 8601) — this is that STIG's "last scanned" timestamp for the asset.
+      const scanDate = (stig["evaluate-stig"] && stig["evaluate-stig"].time) || "";
 
       const rules = Array.isArray(stig.rules) ? stig.rules : [];
       const vulns = rules.map((r, idx)=>{
@@ -739,8 +793,10 @@
       results.push({
         id: filename + "_" + sIdx + "_" + Math.random().toString(36).slice(2,8),
         fileName: filename + (stigs.length > 1 ? "  ·  " + (stigTitle||"STIG "+(sIdx+1)) : ""),
+        sourceFile: filename,
         hostName, hostIp, hostFqdn, role,
         stigTitle, stigVersion, releaseInfo,
+        scanDate,
         vulns
       });
     });
@@ -1051,9 +1107,10 @@
 
   // Requirement 8 — AES: ACR combined with severity-weighted exposure from open/unreviewed findings, 0-1000
   function computeAES(host, acrValue){
-    let raw = 0;
+    let raw = 0, total = 0;
     (host.stigs||[]).forEach(a=>{
       a.vulns.forEach(v=>{
+        total++;
         if(v.status === "Open"){
           raw += v.severity==="high" ? 10 : v.severity==="medium" ? 6 : 3;
         } else if(v.status === "Not_Reviewed"){
@@ -1061,10 +1118,20 @@
         }
       });
     });
-    const exposureScore = 1000 * (1 - Math.exp(-raw/40));
+    // Feed the saturating curve a per-rule severity-weighted density
+    // (roughly 0-10), not the raw point total — raw scales with how many
+    // rules the host has (more applied STIGs = proportionally more open-
+    // finding points at the *same* compliance level), so using it directly
+    // saturated exposureScore at ~1000 for almost any host with more than
+    // ~20-30 weighted open findings, which is nearly every multi-hundred-
+    // rule asset regardless of actual compliance. Normalizing by rule count
+    // keeps AES sensitive to remediation instead of being a pure function
+    // of ACR once a host crosses that tiny threshold.
+    const density = total ? raw / total : 0;
+    const exposureScore = 1000 * (1 - Math.exp(-density/2.5));
     const multiplier = 0.3 + 0.07*acrValue;
     const aes = Math.round(Math.min(1000, exposureScore*multiplier));
-    return {aes, raw, exposureScore:Math.round(exposureScore)};
+    return {aes, raw, density:Math.round(density*100)/100, exposureScore:Math.round(exposureScore)};
   }
 
   function aesBand(aes){
@@ -1090,6 +1157,178 @@
     const cls = {OK:"crit-ok",Low:"crit-l",Medium:"crit-m",High:"crit-h",Critical:"crit-c"}[band];
     const tip = `AES (Asset Exposure Score): combines this asset's ACR with the severity-weighted exposure of its Open and Not Reviewed STIG findings (CAT I / II / III), scaled 0-1000. This asset scores ${aes} -> ${band}.`;
     return `<span class="aes-badge ${cls} tooltip" data-tip="${esc(tip)}">${aes}</span>`;
+  }
+  // Renders the Assets table's "Last Scanned" cell: the newest scan date
+  // across every STIG file applied to this host. When those files were
+  // actually scanned on different dates, adds a tooltip breaking down the
+  // date per STIG so it's clear which one is driving the displayed date.
+  // Single source of truth for a host's "last scanned" state — the newest
+  // scan date across every (already latest-per-STIG, post-dedup) STIG
+  // applied to it, plus a per-STIG date breakdown for the tooltip whenever
+  // those dates actually differ. Computed once in buildAssetRow and reused
+  // by both the Assets table cell and the Asset Detail blade, rather than
+  // recomputed per render site.
+  function lastScannedInfo(host){
+    let latest = null;
+    host.stigs.forEach(a=>{
+      const d = parseScanDate(a.scanDate);
+      if(d && (!latest || d > latest)) latest = d;
+    });
+    if(!latest) return {date:null, label:"—", tip:null};
+    const label = formatDateISO(latest);
+    const allSame = host.stigs.every(a=>{
+      const d = parseScanDate(a.scanDate);
+      return d && formatDateISO(d) === label;
+    });
+    const tip = allSame ? null : host.stigs.map(a=>{
+      const d = parseScanDate(a.scanDate);
+      return `${a.stigTitle||a.fileName}: ${d?formatDateISO(d):"unknown"}`;
+    }).join(" · ");
+    return {date:latest, label, tip};
+  }
+
+  // Reconstructs a host's AES history from every distinct scan date recorded
+  // across its raw checklist imports (not just the currently-active/latest
+  // one per STIG — see latestAssets()). For each distinct date, AES is
+  // computed using whatever was the most recent per-STIG data known AT that
+  // point in time, so re-scanning only some of a host's STIGs still yields a
+  // sensible "as of" snapshot rather than requiring every STIG to share the
+  // same date. Returns [] if the host has no dated imports at all (e.g. CKL
+  // files where no scan date could be extracted).
+  function aesHistory(hostKey){
+    const raw = assets.filter(a => (a.hostName||a.fileName) === hostKey);
+    if(!raw.length) return [];
+    const dateTimes = new Set();
+    raw.forEach(a=>{ const d = parseScanDate(a.scanDate); if(d) dateTimes.add(d.getTime()); });
+    const dates = Array.from(dateTimes).sort((a,b)=>a-b).map(t=>new Date(t));
+
+    return dates.map(asOfDate=>{
+      const byStig = new Map();
+      raw.forEach(a=>{
+        const d = parseScanDate(a.scanDate);
+        if(d && d > asOfDate) return; // scanned after this point in time — not yet known
+        const key = a.stigTitle || a.fileName;
+        const existing = byStig.get(key);
+        if(!existing){ byStig.set(key, a); return; }
+        if(!d) return; // an undated entry never supersedes whatever we already have
+        const existingDate = parseScanDate(existing.scanDate);
+        if(!existingDate || d >= existingDate) byStig.set(key, a);
+      });
+      const hostSnapshot = {hostKey, hostName: raw[0].hostName||hostKey, hostIp: raw[0].hostIp, role: raw[0].role, stigs: Array.from(byStig.values())};
+      const acrInfo = getACR(hostKey, hostSnapshot);
+      const aesInfo = computeAES(hostSnapshot, acrInfo.value);
+      return {date: asOfDate, aes: aesInfo.aes};
+    });
+  }
+
+  function aesTimelineSvg(points, label){
+    label = label || "AES";
+    const W = 900, H = 220;
+    const mL = 46, mR = 18, mT = 16, mB = 34;
+    const pw = W-mL-mR, ph = H-mT-mB;
+    const n = points.length;
+    const yOf = aes => mT + ph - (Math.max(0,Math.min(1000,aes))/1000)*ph;
+    const xOf = i => n<=1 ? mL+pw/2 : mL + (i/(n-1))*pw;
+    const bandColor = aes => aes>=900?"#7a1620": aes>=700?"#e5484d": aes>=500?"#e08a3c": aes>=300?"#d9be4a":"#4ea8de";
+
+    const yTicks = [0,250,500,750,1000].map(v=>{
+      const y = yOf(v);
+      return `<line x1="${mL}" y1="${y.toFixed(1)}" x2="${mL+pw}" y2="${y.toFixed(1)}" stroke="#1c2830" stroke-width="1"/>
+        <text x="${mL-8}" y="${y.toFixed(1)}" text-anchor="end" dominant-baseline="middle" font-size="9" font-family="ui-monospace,monospace" fill="#8196a3">${v}</text>`;
+    }).join("");
+
+    const benchLines = [300,500,700,900].map(v=>{
+      const y = yOf(v);
+      return `<line x1="${mL}" y1="${y.toFixed(1)}" x2="${mL+pw}" y2="${y.toFixed(1)}" stroke="#324450" stroke-width="1" stroke-dasharray="4 3"/>`;
+    }).join("");
+
+    const linePts = points.map((p,i)=> `${xOf(i).toFixed(1)},${yOf(p.aes).toFixed(1)}`).join(" ");
+
+    const dateLabels = points.map((p,i)=>{
+      const x = xOf(i);
+      return `<text x="${x.toFixed(1)}" y="${mT+ph+16}" text-anchor="middle" font-size="9" font-family="ui-monospace,monospace" fill="#8196a3">${esc(formatDateISO(p.date))}</text>`;
+    }).join("");
+
+    const dots = points.map((p,i)=>{
+      const x = xOf(i), y = yOf(p.aes);
+      return `<circle class="aes-trend-pt" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5" fill="${bandColor(p.aes)}" stroke="#0a0f13" stroke-width="1.5"><title>${esc(formatDateISO(p.date))} — ${label} ${p.aes}</title></circle>`;
+    }).join("");
+
+    return `<svg viewBox="0 0 ${W} ${H}" class="trend-svg">
+      ${yTicks}
+      <line x1="${mL}" y1="${mT}" x2="${mL}" y2="${mT+ph}" stroke="#324450" stroke-width="1"/>
+      <line x1="${mL}" y1="${mT+ph}" x2="${mL+pw}" y2="${mT+ph}" stroke="#324450" stroke-width="1"/>
+      ${benchLines}
+      ${n>1 ? `<polyline points="${linePts}" fill="none" stroke="#4ea8de" stroke-width="1.5"/>` : ""}
+      ${dots}
+      ${dateLabels}
+    </svg>`;
+  }
+
+  function aesTrendPanelHtml(host, aesInfo){
+    const points = aesHistory(host.hostKey);
+    const tip = "Reconstructs this asset's AES as of each recorded scan date, using the most recent per-STIG data known at that point in time. Requires dated scans (CKLB's evaluate-stig.time, or a CKL Evaluate-STIG date it could extract) — assets without any usable scan date can't be charted.";
+    const badge = aesInfo ? aesBadgeHtml(aesInfo.aes) : "";
+    const head = `<div class="head has-badge"><h3>AES Over Time</h3><div class="aes-trend-badge-center">${badge}</div><span class="overall tooltip" data-tip="${esc(tip)}">what is this?</span></div>`;
+    if(!points.length){
+      return `<div class="trend-panel">${head}<div class="empty-note">No dated scans available yet to chart a trend.</div></div>`;
+    }
+    return `<div class="trend-panel">${head}${aesTimelineSvg(points)}</div>`;
+  }
+
+  function cesHistory(){
+    const dateTimes = new Set();
+    assets.forEach(a=>{ const d = parseScanDate(a.scanDate); if(d) dateTimes.add(d.getTime()); });
+    const dates = Array.from(dateTimes).sort((a,b)=>a-b).map(t=>new Date(t));
+    if(!dates.length) return [];
+
+    const byHost = new Map();
+    assets.forEach(a=>{
+      const hostKey = a.hostName || a.fileName;
+      if(!byHost.has(hostKey)) byHost.set(hostKey, []);
+      byHost.get(hostKey).push(a);
+    });
+
+    return dates.map(asOfDate=>{
+      const hostScores = [];
+      byHost.forEach((raw, hostKey)=>{
+        const byStig = new Map();
+        raw.forEach(a=>{
+          const d = parseScanDate(a.scanDate);
+          if(d && d > asOfDate) return; // scanned after this point in time — not yet known
+          const key = a.stigTitle || a.fileName;
+          const existing = byStig.get(key);
+          if(!existing){ byStig.set(key, a); return; }
+          if(!d) return; // an undated entry never supersedes whatever we already have
+          const existingDate = parseScanDate(existing.scanDate);
+          if(!existingDate || d >= existingDate) byStig.set(key, a);
+        });
+        if(!byStig.size) return; // this host has no scan known as of this date yet
+        const hostSnapshot = {hostKey, hostName: raw[0].hostName||hostKey, hostIp: raw[0].hostIp, role: raw[0].role, stigs: Array.from(byStig.values())};
+        const acrInfo = getACR(hostKey, hostSnapshot);
+        const aesInfo = computeAES(hostSnapshot, acrInfo.value);
+        hostScores.push(aesInfo.aes);
+      });
+      const ces = hostScores.length ? Math.round(hostScores.reduce((s,v)=>s+v,0)/hostScores.length) : 0;
+      return {date: asOfDate, aes: ces, hostCount: hostScores.length};
+    });
+  }
+
+  function cesTrendPanelHtml(){
+    const points = cesHistory();
+    const tip = "Reconstructs the fleet-wide CES (average AES across all assets) as of each recorded scan date, using the most recent per-host, per-STIG data known at that point in time. Requires dated scans — points reflect only hosts with at least one dated scan by that date, so early points may cover fewer assets than the current total.";
+    const head = `<div class="head"><h3>CES Over Time</h3><span class="overall tooltip" data-tip="${esc(tip)}">what is this?</span></div>`;
+    if(!points.length){
+      return `<div class="trend-panel">${head}<div class="empty-note">No dated scans available yet to chart a fleet-wide trend.</div></div>`;
+    }
+    return `<div class="trend-panel">${head}${aesTimelineSvg(points, "CES")}</div>`;
+  }
+
+  function lastScannedCellHtml(r){
+    const info = r.lastScannedInfo;
+    if(!info || !info.date) return `<td class="src">—</td>`;
+    if(!info.tip) return `<td class="src">${esc(info.label)}</td>`;
+    return `<td class="src tooltip" data-tip="${esc(info.tip)}">${esc(info.label)}</td>`;
   }
   function critBadgeHtml(letter){
     const cls = {L:"crit-l",M:"crit-m",H:"crit-h",C:"crit-c"}[letter]||"crit-l";
@@ -1296,7 +1535,7 @@
     W = W || 480; H = H || 300;
     const mL = 46, mR = 18, mT = 16, mB = 42;
     const pw = W-mL-mR, ph = H-mT-mB;
-    const maxCount = Math.max(1, ...rows.map(r=>r.total));
+    const maxCount = Math.max(1, ...rows.map(r=>r.open+r.nr));
     const yMax = Math.max(10, Math.ceil((maxCount*1.15)/10)*10);
     const xOf = aes => mL + (Math.max(0,Math.min(1000,aes))/1000)*pw;
     const yOf = c => mT + ph - (Math.max(0,c)/yMax)*ph;
@@ -1321,9 +1560,10 @@
 
     const canDrill = bladeIndex !== null && bladeIndex !== undefined;
     const points = rows.map(r=>{
-      const cx = xOf(r.aes), cy = yOf(r.total);
+      const unresolved = r.open + r.nr;
+      const cx = xOf(r.aes), cy = yOf(unresolved);
       const drillAttrs = canDrill ? `data-action="drill" data-blade-index="${bladeIndex}" data-type="assetDetail" data-title="${esc(r.host.hostName)}" data-hostkey="${esc(r.host.hostKey)}"` : "";
-      return `<circle class="scatter-pt" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5" fill="${bandColor(r.aes)}" fill-opacity="0.85" stroke="#0a0f13" stroke-width="1" ${drillAttrs}><title>${esc(r.host.hostName)} — AES ${r.aes}, ${r.total} findings</title></circle>`;
+      return `<circle class="scatter-pt" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5" fill="${bandColor(r.aes)}" fill-opacity="0.85" stroke="#0a0f13" stroke-width="1" ${drillAttrs}><title>${esc(r.host.hostName)} — AES ${r.aes}, ${unresolved} open/not-reviewed finding${unresolved===1?"":"s"}</title></circle>`;
     }).join("");
 
     return `<svg viewBox="0 0 ${W} ${H}" class="scatter-svg">
@@ -1334,14 +1574,14 @@
       ${xEndLabels}
       ${points}
       <text x="${mL+pw/2}" y="${H-4}" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#8196a3" letter-spacing="1">AES SCORE</text>
-      <text x="12" y="${mT+ph/2}" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#8196a3" letter-spacing="1" transform="rotate(-90 12 ${mT+ph/2})">FINDINGS</text>
+      <text x="12" y="${mT+ph/2}" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#8196a3" letter-spacing="1" transform="rotate(-90 12 ${mT+ph/2})">OPEN FINDINGS</text>
     </svg>`;
   }
 
   function scatterPanelHtml(rows, bladeIndex){
     if(!rows.length) return "";
     return `<div class="scatter-panel">
-      <div class="head"><h3>AES vs. Finding Count</h3><span class="overall tooltip" data-tip="Each point is one asset — click a dot to open that asset. X axis is its AES (Asset Exposure Score), Y axis is its total STIG finding count. Dashed lines mark the same 300/500/700/900 AES benchmarks used on the CES gauge.">what is this?</span></div>
+      <div class="head"><h3>AES vs. Finding Count</h3><span class="overall tooltip" data-tip="Each point is one asset — click a dot to open that asset. X axis is its AES (Asset Exposure Score), Y axis is its count of Open + Not Reviewed findings (the unresolved ones). Dashed lines mark the same 300/500/700/900 AES benchmarks used on the CES gauge.">what is this?</span></div>
       <div class="scatter-wrap">${scatterPlotSvg(rows, undefined, undefined, bladeIndex)}</div>
     </div>`;
   }
@@ -1573,6 +1813,8 @@
     {key:"stigCount", label:"STIGs", default:true},
     {key:"open", label:"Open", default:true},
     {key:"compliance", label:"% Compliant", default:true},
+    {key:"lastScanned", label:"Last Scanned", default:true},
+    {key:"history", label:"History", default:false},
     {key:"ip", label:"IP Address", default:false},
     {key:"role", label:"Role", default:false},
     {key:"os", label:"Operating System", default:false},
@@ -1840,9 +2082,46 @@
     return "blade-w-lg"; // dashboard, assets, assetDetail, stigs, stigDetail
   }
 
+  // Collapses the raw `assets` list (one entry per imported STIG-per-file) to
+  // a single entry per (host, STIG) pair — whichever import has the newest
+  // scanDate wins. Dropping in a re-scanned CKL/CKLB for a STIG that's
+  // already loaded for a host should supersede the stale import everywhere
+  // compliance/findings get aggregated, not add to it. The Import blade
+  // deliberately keeps reading the raw `assets` array directly (see
+  // renderImport/handleFiles/removeAsset) so every individual imported file
+  // stays visible/removable there regardless of this dedup.
+  function latestAssets(){
+    const byKey = new Map();
+    assets.forEach(a=>{
+      const hostKey = a.hostName || a.fileName;
+      const stigKey = a.stigTitle || a.fileName;
+      const key = hostKey + "||" + stigKey;
+      const existing = byKey.get(key);
+      if(!existing){ byKey.set(key, a); return; }
+      const newDate = parseScanDate(a.scanDate), curDate = parseScanDate(existing.scanDate);
+      // Prefer a real, later date; if the existing entry has no usable date
+      // (or neither does), the more-recently-imported one wins.
+      if(!curDate || (newDate && newDate >= curDate)) byKey.set(key, a);
+    });
+    return Array.from(byKey.values());
+  }
+
+  // Counts distinct checklist files ever imported for a host — the Assets
+  // table's History column. Deliberately scans the raw `assets` array (every
+  // import, not latestAssets()'s deduped view) so a host that's been
+  // re-scanned shows its full import count (e.g. 3), not just how many
+  // distinct STIGs are currently active.
+  function historyCount(hostKey){
+    const files = new Set();
+    assets.forEach(a=>{
+      if((a.hostName||a.fileName) === hostKey) files.add(a.sourceFile || a.fileName);
+    });
+    return files.size;
+  }
+
   function groupAssetsByHost(){
     const map = new Map();
-    assets.forEach(a=>{
+    latestAssets().forEach(a=>{
       const key = a.hostName || a.fileName;
       if(!map.has(key)) map.set(key, {hostKey:key, hostName:a.hostName||key, hostIp:a.hostIp, role:a.role, stigs:[]});
       map.get(key).stigs.push(a);
@@ -1862,7 +2141,9 @@
     const compliance = total ? Math.round(((naf+na)/total)*100) : 100;
     const acrInfo = getACR(host.hostKey, host);
     const aesInfo = computeAES(host, acrInfo.value);
-    return {host, total, open, nr, naf, na, compliance, acr:acrInfo.value, acrOverride:acrInfo.isOverride, acrInfo, aes:aesInfo.aes, os:inferHostOS(host)};
+    const scanInfo = lastScannedInfo(host);
+    const history = historyCount(host.hostKey);
+    return {host, total, open, nr, naf, na, compliance, acr:acrInfo.value, acrOverride:acrInfo.isOverride, acrInfo, aes:aesInfo.aes, os:inferHostOS(host), lastScanned:scanInfo.date, lastScannedInfo:scanInfo, history};
   }
 
   function filterAssetRows(rows, state){
@@ -1889,6 +2170,8 @@
         case "open": return (a.open-b.open)*dir;
         case "notReviewed": return (a.nr-b.nr)*dir;
         case "compliance": return (a.compliance-b.compliance)*dir;
+        case "lastScanned": return ((a.lastScanned?a.lastScanned.getTime():0)-(b.lastScanned?b.lastScanned.getTime():0))*dir;
+        case "history": return (a.history-b.history)*dir;
         case "ip": return (a.host.hostIp||"").localeCompare(b.host.hostIp||"")*dir;
         case "role": return (a.host.role||"").localeCompare(b.host.role||"")*dir;
         case "os": return (a.os||"").localeCompare(b.os||"")*dir;
@@ -1911,7 +2194,7 @@
   // aggregating rule counts across every host that STIG was applied to.
   function buildStigGroups(){
     const map = new Map();
-    assets.forEach(a=>{
+    latestAssets().forEach(a=>{
       const key = a.stigTitle || a.fileName;
       if(!map.has(key)){
         map.set(key, {
@@ -1991,7 +2274,7 @@
   // the blade from scratch anyway via refreshBlade).
   function renderDashboard(blade, bladeIndex){
     const allVulns = [];
-    assets.forEach(a => a.vulns.forEach(v => allVulns.push(v)));
+    latestAssets().forEach(a => a.vulns.forEach(v => allVulns.push(v)));
     const hosts = groupAssetsByHost();
     const rows = hosts.map(buildAssetRow);
     lastDashboardRows = rows;
@@ -2013,7 +2296,8 @@
           ${critSummaryHtml(bladeIndex, hosts)}
         </div>`;
     })() : `
-      <div class="ces-row" style="margin-top:12px;">
+      ${cesTrendPanelHtml()}
+      <div class="ces-row" style="margin-top:16px;">
         ${cesPanelHtml(rows)}
         ${donutPanelHtml("Assets by Operating System", "Each asset's OS is inferred from the most OS-defining STIG title loaded for it. Assets with no recognizable OS-defining STIG are grouped under Other / Unspecified.", osDonutEntries(bladeIndex, hosts), "ASSETS", "no assets loaded yet")}
       </div>
@@ -2061,6 +2345,8 @@
             case "open": return `<td><span class="status-pill Open">${r.open}</span></td>`;
             case "notReviewed": return `<td><span class="status-pill Not_Reviewed">${r.nr}</span></td>`;
             case "compliance": return `<td>${r.compliance}%</td>`;
+            case "lastScanned": return lastScannedCellHtml(r);
+            case "history": return `<td class="tooltip" data-tip="${esc(r.history + " checklist file" + (r.history===1?"":"s") + " imported for this host")}">${r.history}</td>`;
             default: return `<td></td>`;
           }
         }).join("");
@@ -2078,6 +2364,7 @@
     if(!host) return `<div class="empty-note">asset not found — it may have been removed</div>`;
     const acrInfo = getACR(host.hostKey, host);
     const aesInfo = computeAES(host, acrInfo.value);
+    const scanInfo = lastScannedInfo(host);
 
     const vulns = [];
     host.stigs.forEach(a=>{
@@ -2090,28 +2377,37 @@
     const filtered = filterVulns(vulns, blade.state);
     const defs = FINDING_COLS;
     const sourceOptions = Array.from(new Set(vulns.map(v=>v._sourceLabel).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+    const {stats} = computeStats(vulns);
 
     return `
       <div class="asset-score-row">
         <div class="score-block">
           <div class="score-label">ACR (Asset Criticality Rating)</div>
-          ${acrBadgeHtml(acrInfo)}
-          <select class="acr-override" data-action="set-acr-override" data-hostkey="${esc(host.hostKey)}">
-            <option value="auto" ${!acrInfo.isOverride?"selected":""}>Auto (${acrInfo.auto})</option>
-            ${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option value="${n}" ${acrInfo.isOverride&&acrInfo.value===n?"selected":""}>Override: ${n}</option>`).join("")}
-          </select>
-        </div>
-        <div class="score-block">
-          <div class="score-label">AES (Asset Exposure Score)</div>
-          ${aesBadgeHtml(aesInfo.aes)}
+          <div class="acr-row">
+            ${acrBadgeHtml(acrInfo)}
+            <select class="acr-override" data-action="set-acr-override" data-hostkey="${esc(host.hostKey)}">
+              <option value="auto" ${!acrInfo.isOverride?"selected":""}>Auto (${acrInfo.auto})</option>
+              ${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option value="${n}" ${acrInfo.isOverride&&acrInfo.value===n?"selected":""}>Override: ${n}</option>`).join("")}
+            </select>
+          </div>
         </div>
       </div>
       <div class="blade-meta">
         ${host.hostIp ? `<span>IP: <b>${esc(host.hostIp)}</b></span>` : ""}
         ${host.role ? `<span>Role: <b>${esc(host.role)}</b></span>` : ""}
         <span>STIGs applied: <b>${host.stigs.length}</b></span>
+        <span${scanInfo.tip ? ` class="tooltip" data-tip="${esc(scanInfo.tip)}"` : ""}>Last Scanned: <b>${esc(scanInfo.label)}</b></span>
       </div>
-      <div style="margin-top:10px;">${complianceBlockHtml(vulns)}</div>
+      <div style="margin-top:16px;">${aesTrendPanelHtml(host, aesInfo)}</div>
+      <div class="compliance-split-row">
+        ${complianceBarsHtml(vulns)}
+        <div class="tiles-stack">
+          <div class="tile open"><div class="n">${stats.Open}</div><div class="lbl">Open</div></div>
+          <div class="tile nr"><div class="n">${stats.Not_Reviewed}</div><div class="lbl">Not Reviewed</div></div>
+          <div class="tile naf"><div class="n">${stats.NotAFinding}</div><div class="lbl">Not a Finding</div></div>
+          <div class="tile na"><div class="n">${stats.Not_Applicable}</div><div class="lbl">N/A</div></div>
+        </div>
+      </div>
       ${controlsHtml(blade.id, blade.state, defs, "findings")}
       ${findingsTableHtml(blade, filtered, true, sourceOptions)}`;
   }
@@ -2156,7 +2452,7 @@
 
   function renderStigDetail(blade, bladeIndex){
     const stigKey = blade.params.stigKey;
-    const matches = assets.filter(a => (a.stigTitle||a.fileName) === stigKey);
+    const matches = latestAssets().filter(a => (a.stigTitle||a.fileName) === stigKey);
     if(!matches.length) return `<div class="empty-note">STIG not found — it may have been removed</div>`;
     const hostsMap = new Map(groupAssetsByHost().map(h=>[h.hostKey, h]));
     const vulns = [];
@@ -2199,7 +2495,7 @@
       return val;
     };
     const vulns = [];
-    assets.forEach(a=>{
+    latestAssets().forEach(a=>{
       const hostKey = a.hostName || a.fileName;
       const acrVal = acrValueFor(hostKey);
       a.vulns.forEach(v=> vulns.push(Object.assign({}, v, {
@@ -2297,12 +2593,16 @@
   }
 
   function renderChangelog(blade, bladeIndex){
+    // Render newest-first while keeping data-changelog-index pointing at each
+    // entry's real position in CHANGELOG, so drill-down and the i===0
+    // "Initial release" check (the true first release, not the first row
+    // shown) both still resolve correctly.
     const rows = CHANGELOG.map((c,i) => `
       <tr data-action="drill" data-blade-index="${bladeIndex}" data-type="changelogDetail" data-title="Version ${esc(c.version)}" data-changelog-index="${i}">
         <td class="src">${esc(c.date)}</td>
         <td class="title">${esc(c.version)}</td>
         <td>${esc(i === 0 ? "Initial release" : changelogUpdateKind(c.version))}</td>
-      </tr>`).join("");
+      </tr>`).reverse().join("");
     return `
       <div class="tablewrap">
         <table>
@@ -2383,7 +2683,9 @@
     $("#portal").style.display = hasAssets ? "flex" : "none";
     $("#addMoreBtn").style.display = hasAssets ? "inline-block" : "none";
 
-    const allVulnsCount = assets.reduce((s,a)=>s+a.vulns.length,0);
+    // Matches the Findings blade / Dashboard findings-tab, both of which now
+    // count only the latest scan per (host, STIG) — not every raw import.
+    const allVulnsCount = latestAssets().reduce((s,a)=>s+a.vulns.length,0);
     $("#ledgerStatus").innerHTML = hasAssets
       ? `<span class="prompt">$</span> ${assets.length} STIG file${assets.length>1?"s":""} loaded`
       : `<span class="prompt">$</span> awaiting file<span class="cursor-inline">_</span>`;
