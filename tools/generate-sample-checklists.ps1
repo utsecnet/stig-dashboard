@@ -485,33 +485,11 @@ $citrixvad = New-Profile "U_Citrix_VAD_7-x_Workspace_App_STIG_V1R3_Manual-xccdf.
 # instead of clustering together.
 # ===========================================================================
 
-New-Asset -FileName "dc06-win2022.cklb" -HostName "DC06-WIN2022" `
-    -IpAddress (Next-Ip "10.10.0" 16) -MacAddress (Next-Mac) -Fqdn "dc06-win2022.utsec.mil" `
-    -Role "Domain Controller" -TechArea "Directory Services" `
-    -ProfileList @($winserver2022, $addsstig) -ComplianceWeight 0.90
-
-New-Asset -FileName "db-sql07.cklb" -HostName "DB-SQL07" `
-    -IpAddress (Next-Ip "10.20.2" 62) -MacAddress (Next-Mac) -Fqdn "db-sql07.utsec.mil" `
-    -Role "Member Server" -TechArea "Database" -IsWebDb $true `
-    -ProfileList @($winserver2019, $mssql2016instance) -ComplianceWeight 0.68
-
-New-Asset -FileName "web03-rhel9.cklb" -HostName "WEB03-RHEL9" `
-    -IpAddress (Next-Ip "10.20.4" 30) -MacAddress (Next-Mac) -Fqdn "web03-rhel9.utsec.mil" `
-    -Role "Member Server" -TechArea "Web Server" -IsWebDb $true `
-    -ProfileList @($rhel9, $apachetomcat9) -ComplianceWeight 0.52
-
-New-Asset -FileName "rtr-branch-06.cklb" -HostName "RTR-BRANCH-06" `
-    -IpAddress (Next-Ip "10.10.5" 6) -MacAddress (Next-Mac) -Fqdn "rtr-branch-06.utsec.mil" `
-    -Role "None" -TechArea "Network" `
-    -ProfileList @($ciscortrndm, $ciscortrrtr) -ComplianceWeight 0.35
-
-New-Asset -FileName "wks-05006.cklb" -HostName "WKS-05006" `
-    -IpAddress (Next-Ip "10.30.6" 207) -MacAddress (Next-Mac "00:1C:42") -Fqdn "wks-05006.utsec.mil" `
-    -Role "Workstation" -TechArea "None" `
-    -ProfileList @($win11, $office365) -ComplianceWeight 0.80
-
-# --- Batch 2: 50 more devices for a small development network ---
-
+New-Asset -FileName "dc06-win2022.cklb" -HostName "DC06-WIN2022" -IpAddress (Next-Ip "10.10.0" 16) -MacAddress (Next-Mac) -Fqdn "dc06-win2022.utsec.mil" -Role "Domain Controller" -TechArea "Directory Services" -ProfileList @($winserver2022, $addsstig) -ComplianceWeight 0.90
+New-Asset -FileName "db-sql07.cklb" -HostName "DB-SQL07" -IpAddress (Next-Ip "10.20.2" 62) -MacAddress (Next-Mac) -Fqdn "db-sql07.utsec.mil" -Role "Member Server" -TechArea "Database" -IsWebDb $true -ProfileList @($winserver2019, $mssql2016instance) -ComplianceWeight 0.68
+New-Asset -FileName "web03-rhel9.cklb" -HostName "WEB03-RHEL9" -IpAddress (Next-Ip "10.20.4" 30) -MacAddress (Next-Mac) -Fqdn "web03-rhel9.utsec.mil" -Role "Member Server" -TechArea "Web Server" -IsWebDb $true -ProfileList @($rhel9, $apachetomcat9) -ComplianceWeight 0.52
+New-Asset -FileName "rtr-branch-06.cklb" -HostName "RTR-BRANCH-06" -IpAddress (Next-Ip "10.10.5" 6) -MacAddress (Next-Mac) -Fqdn "rtr-branch-06.utsec.mil" -Role "None" -TechArea "Network" -ProfileList @($ciscortrndm, $ciscortrrtr) -ComplianceWeight 0.35
+New-Asset -FileName "wks-05006.cklb" -HostName "WKS-05006" -IpAddress (Next-Ip "10.30.6" 207) -MacAddress (Next-Mac "00:1C:42") -Fqdn "wks-05006.utsec.mil" -Role "Workstation" -TechArea "None" -ProfileList @($win11, $office365) -ComplianceWeight 0.80
 New-Asset -FileName "dc07-win2019.cklb" -HostName "DC07-WIN2019" -IpAddress "10.10.0.20" -MacAddress (Next-Mac) -Fqdn "dc07-win2019.utsec.mil" -Role "Domain Controller" -TechArea "Directory Services" -ProfileList @($winserver2019,$addsstig,$addsforest) -ComplianceWeight 0.75
 New-Asset -FileName "dc-legacy01.cklb" -HostName "DC-LEGACY01" -IpAddress "10.10.0.21" -MacAddress (Next-Mac) -Fqdn "dc-legacy01.utsec.mil" -Role "Domain Controller" -TechArea "Directory Services" -ProfileList @($win2012r2dc,$addsstig) -ComplianceWeight 0.22
 New-Asset -FileName "fs01-win2022.cklb" -HostName "FS01-WIN2022" -IpAddress "10.10.1.10" -MacAddress (Next-Mac) -Fqdn "fs01-win2022.utsec.mil" -Role "Member Server" -TechArea "File Server" -ProfileList @($winserver2022) -ComplianceWeight 0.72

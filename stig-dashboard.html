@@ -109,6 +109,25 @@
   }
   .dropzone .hint{margin-top:18px;font-family:var(--mono);font-size:10.5px;color:var(--dim);letter-spacing:.03em;}
 
+  /* ===== Background file-loading indicator (unobtrusive corner toast) ===== */
+  .bg-loader{
+    position:fixed;right:18px;bottom:18px;z-index:500;
+    display:flex;align-items:center;gap:8px;
+    background:var(--panel-raised);border:1px solid var(--hairline-bright);border-radius:20px;
+    padding:7px 14px 7px 11px;
+    font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.02em;
+    box-shadow:0 6px 18px rgba(0,0,0,.35);
+    opacity:0;transform:translateY(6px);pointer-events:none;
+    transition:opacity .18s ease, transform .18s ease;
+  }
+  .bg-loader.show{opacity:1;transform:translateY(0);}
+  .bg-loader-spin{
+    width:10px;height:10px;flex:none;border-radius:50%;
+    border:2px solid var(--hairline-bright);border-top-color:var(--naf);
+    animation:bg-loader-spin .7s linear infinite;
+  }
+  @keyframes bg-loader-spin{to{transform:rotate(360deg);}}
+
   /* ===== Portal shell: rail + horizontally scrolling blades ===== */
   .portal{flex:1;display:flex;min-height:0;}
   .rail{
@@ -434,6 +453,10 @@
   .fd-body .comments{color:var(--nr);}
   .changelog-notes{margin:16px 0 0;padding-left:18px;color:var(--muted);font-size:13px;line-height:1.8;}
   .changelog-notes li{margin-bottom:4px;}
+  .changelog-section{margin-top:18px;}
+  .changelog-section:first-child{margin-top:16px;}
+  .changelog-section-title{font-family:var(--mono);font-size:10.5px;font-weight:600;color:var(--dim);letter-spacing:.1em;text-transform:uppercase;}
+  .changelog-section .changelog-notes{margin-top:6px;}
 
   /* ===== Import blade ===== */
   .import-remove{
@@ -471,6 +494,10 @@
 </head>
 <body>
 
+<div class="bg-loader" id="bgLoader" role="status" aria-live="polite">
+  <span class="bg-loader-spin"></span><span id="bgLoaderText"></span>
+</div>
+
 <div class="ledger">
   <div class="brand"><span class="dot"></span> CKL DASHBOARD <span class="sep">/</span> offline STIG results viewer</div>
   <span id="ledgerStatus"><span class="prompt">$</span> awaiting file<span class="cursor-inline">_</span></span>
@@ -500,7 +527,7 @@
       <div class="rail-item" data-menu="findings"><span class="glyph">&#9673;</span><span class="label-text">Findings</span><span class="rail-count" id="railCountFindings"></span></div>
       <div class="rail-item" data-menu="import"><span class="glyph">+</span><span class="label-text">Import</span></div>
     </div>
-    <div class="rail-item rail-version" data-menu="changelog"><span class="glyph">ⓘ</span><span class="label-text">v1.0</span></div>
+    <div class="rail-item rail-version" data-menu="changelog"><span class="glyph">ⓘ</span><span class="label-text" id="railVersionLabel">v2026.1.01</span></div>
     <div class="rail-copyright">© 2026 utsecnet.<br>All rights reserved.</div>
   </div>
   <div class="blade-scroll" id="bladeScroll"></div>
@@ -522,7 +549,8 @@
     return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
   }
   const CHANGELOG = [
-    {version:"1.0", date: formatToday(), notes:"Initial release"}
+    {version:"2026.1", date: formatToday(), notes:["Initial release"]},
+    {version:"2026.1.01", date: formatToday(), features:["Added CKL/CKLB file import indicator"], fixes:[]}
   ];
 
   let assets = []; // {id, fileName, hostName, hostIp, stigTitle, stigVersion, releaseInfo, vulns:[...]}
@@ -531,6 +559,34 @@
   let lastDashboardRows = []; // most recently computed dashboard asset rows, for scatter chart resize redraws
   let lastDashboardBladeIndex = null; // bladeIndex those rows belong to, so resize redraws keep working drill links
   const acrOverrides = new Map(); // hostKey -> integer 1-10
+
+  // ---- Background file-loading indicator ----
+  // Kept unobtrusive: only appears if parsing takes long enough to notice
+  // (a small delay avoids a flash for one or two files that resolve instantly),
+  // and it never blocks the UI — files continue loading in the background.
+  let bgLoaderShowTimer = null;
+  let bgLoaderVisible = false;
+  function bgLoaderStart(total){
+    clearTimeout(bgLoaderShowTimer);
+    bgLoaderShowTimer = setTimeout(()=>{
+      $("#bgLoaderText").textContent = `Loading files… 0/${total}`;
+      $("#bgLoader").classList.add("show");
+      bgLoaderVisible = true;
+    }, 200);
+  }
+  function bgLoaderProgress(done, total){
+    if(bgLoaderVisible){
+      $("#bgLoaderText").textContent = `Loading files… ${done}/${total}`;
+    }
+  }
+  function bgLoaderEnd(){
+    clearTimeout(bgLoaderShowTimer);
+    bgLoaderShowTimer = null;
+    if(bgLoaderVisible){
+      $("#bgLoader").classList.remove("show");
+      bgLoaderVisible = false;
+    }
+  }
 
   const $ = (sel, root) => (root||document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root||document).querySelectorAll(sel));
@@ -703,6 +759,9 @@
     const files = Array.from(fileList).filter(f => /\.(ckl|cklb|xml)$/i.test(f.name));
     if(files.length === 0) return;
     let remaining = files.length;
+    const total = files.length;
+    let done = 0;
+    bgLoaderStart(total);
     files.forEach(f=>{
       const reader = new FileReader();
       reader.onload = e=>{
@@ -717,8 +776,10 @@
           console.error("Failed to parse", f.name, err);
           alert("Could not parse " + f.name + " — is it a valid CKL/CKLB file?");
         }
-        remaining--;
+        remaining--; done++;
+        bgLoaderProgress(done, total);
         if(remaining === 0){
+          bgLoaderEnd();
           if(bladeStack.length === 0){ goMenu("dashboard"); }
           else { updateShellChrome(); refreshDependentBlades(()=>true); }
         }
@@ -2225,12 +2286,22 @@
       </div>`;
   }
 
+  function changelogNotesList(c){
+    return Array.isArray(c.notes) ? c.notes : [c.notes];
+  }
+
+  // Version format is yyyy.major.minor — a bare yyyy.major (2 segments) is a
+  // major update; a yyyy.major.minor (3+ segments) is a minor update.
+  function changelogUpdateKind(version){
+    return String(version).split(".").length >= 3 ? "Minor update" : "Major update";
+  }
+
   function renderChangelog(blade, bladeIndex){
     const rows = CHANGELOG.map((c,i) => `
       <tr data-action="drill" data-blade-index="${bladeIndex}" data-type="changelogDetail" data-title="Version ${esc(c.version)}" data-changelog-index="${i}">
         <td class="src">${esc(c.date)}</td>
         <td class="title">${esc(c.version)}</td>
-        <td>${esc(c.notes)}</td>
+        <td>${esc(i === 0 ? "Initial release" : changelogUpdateKind(c.version))}</td>
       </tr>`).join("");
     return `
       <div class="tablewrap">
@@ -2244,12 +2315,26 @@
   function renderChangelogDetail(blade){
     const c = CHANGELOG[blade.params.changelogIndex];
     if(!c) return `<div class="empty-note">release not found</div>`;
+
+    const section = (title, items) => !items || !items.length ? "" : `
+      <div class="changelog-section">
+        <div class="changelog-section-title">${esc(title)}</div>
+        <ul class="changelog-notes">${items.map(n=>`<li>${esc(n)}</li>`).join("")}</ul>
+      </div>`;
+
+    // Entries with explicit features/fixes get labeled sections (omitting
+    // whichever is empty); older plain-"notes" entries (e.g. initial release)
+    // just render as an unlabeled list.
+    const body = (c.features || c.fixes)
+      ? section("Features", c.features) + section("Bug Fixes", c.fixes)
+      : `<ul class="changelog-notes">${changelogNotesList(c).map(n=>`<li>${esc(n)}</li>`).join("")}</ul>`;
+
     return `
       <div class="blade-meta">
         <span>Version: <b>${esc(c.version)}</b></span>
         <span>Released: <b>${esc(c.date)}</b></span>
       </div>
-      <ul class="changelog-notes"><li>${esc(c.notes)}</li></ul>`;
+      ${body}`;
   }
 
   function bladeHeaderHtml(blade, bladeIndex){
@@ -2774,6 +2859,7 @@
     if(fresh){ fresh.focus(); fresh.selectionStart = fresh.selectionEnd = fresh.value.length; }
   });
 
+  $("#railVersionLabel").textContent = "v" + CHANGELOG[CHANGELOG.length - 1].version;
   updateShellChrome();
 })();
 </script>
