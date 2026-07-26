@@ -1,2 +1,6 @@
 # Local-only agent instructions — not for GitHub
 CLAUDE.md
+
+# Raw DISA STIG XCCDF source library used by generate-sample-checklists.ps1 —
+# large and regeneratable, not meant to be synced
+tools/stigs/

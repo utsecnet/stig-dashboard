@@ -384,6 +384,15 @@
     border:1px solid var(--hairline-bright);padding:7px 12px;border-radius:4px;cursor:pointer;
   }
   .export-btn:hover{color:var(--text);}
+  .group-btn{
+    font-family:var(--mono);font-size:11px;color:#fff;background:#4ea8de;
+    border:1px solid #4ea8de;padding:7px 12px;border-radius:4px;cursor:pointer;flex:none;
+  }
+  .group-btn:hover{background:#6cb9e6;border-color:#6cb9e6;}
+  .group-btn.grouped{
+    color:#4ea8de;background:var(--panel-raised);border:1px solid var(--hairline-bright);
+  }
+  .group-btn.grouped:hover{color:#6cb9e6;border-color:var(--dim);}
 
   /* ===== Data tables (assets / stigs / findings) ===== */
   .tablewrap{border:1px solid var(--hairline);border-radius:6px;overflow:auto;}
@@ -455,6 +464,11 @@
   .fd-body h4:first-child{margin-top:4px;}
   .fd-body pre{white-space:pre-wrap;font-family:var(--sans);margin:0;color:var(--muted);font-size:12.5px;line-height:1.65;}
   .fd-body .comments{color:var(--nr);}
+  .fd-affected{margin-top:22px;padding-top:16px;border-top:1px solid var(--hairline);}
+  .fd-affected .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;flex-wrap:wrap;gap:6px;}
+  .fd-affected .head h3{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0;font-weight:600;}
+  .fd-affected .head .overall{font-family:var(--mono);font-size:11px;color:var(--dim);}
+  .fd-affected .controls{margin-bottom:10px;justify-content:flex-end;}
   .changelog-notes{margin:16px 0 0;padding-left:18px;color:var(--muted);font-size:13px;line-height:1.8;}
   .changelog-notes li{margin-bottom:4px;}
   .changelog-section{margin-top:18px;}
@@ -572,7 +586,7 @@
   }
   const CHANGELOG = [
     {version:"2026.1", date: formatToday(), notes:["Initial release"]},
-    {version:"2026.1.01", date: formatToday(), features:["Added CKL/CKLB file import indicator", "Added Vuln ID column to Findings tables", "Widened Findings blade for readability", "Added Last Scanned column to Assets table", "Asset Detail now shows last scanned date", "Added History column (checklist count) to Assets table", "Added AES Over Time chart to Asset Detail", "Tightened Asset Detail layout for space efficiency", "Added CES Over Time chart to top of Dashboard"], fixes:["Removed dead filter-chip code", "Cut redundant ACR recalculation on asset views", "Change log now lists newest release first", "Re-scanned STIGs no longer double-count in totals", "AES no longer saturates and ignores compliance changes", "AES vs Finding Count now counts only open/not-reviewed findings"]}
+    {version:"2026.1.01", date: formatToday(), features:["Added CKL/CKLB file import indicator", "Added Vuln ID column to Findings tables", "Widened Findings blade for readability", "Added Last Scanned column to Assets table", "Asset Detail now shows last scanned date", "Added History column (checklist count) to Assets table", "Added AES Over Time chart to Asset Detail", "Tightened Asset Detail layout for space efficiency", "Added CES Over Time chart to top of Dashboard", "Combined compliance bars and tiles on Findings dashboard", "Made STIG ID column optional; reordered Findings columns", "Vuln ID column now hidden by default but still searchable", "Combined compliance bars and tiles on Findings blade", "Added Group/Ungroup button to Findings blade", "Renamed Source column to Host on Findings blade", "Added Affected Assets list to finding detail (grouped view)"], fixes:["Removed dead filter-chip code", "Cut redundant ACR recalculation on asset views", "Change log now lists newest release first", "Re-scanned STIGs no longer double-count in totals", "AES no longer saturates and ignores compliance changes", "AES vs Finding Count now counts only open/not-reviewed findings"]}
   ];
 
   let assets = []; // {id, fileName, hostName, hostIp, stigTitle, stigVersion, releaseInfo, vulns:[...]}
@@ -1462,11 +1476,11 @@
   }
 
   function dashboardTilesHtml(bladeIndex, stats){
-    return `<div class="tiles">
+    return `<div class="tiles-stack">
       <div class="tile open" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="Open Findings" data-preset-status="Open"><div class="n">${stats.Open}</div><div class="lbl">Open</div></div>
       <div class="tile nr" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="Not Reviewed Findings" data-preset-status="Not_Reviewed"><div class="n">${stats.Not_Reviewed}</div><div class="lbl">Not Reviewed</div></div>
       <div class="tile naf" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="Not a Finding" data-preset-status="NotAFinding"><div class="n">${stats.NotAFinding}</div><div class="lbl">Not a Finding</div></div>
-      <div class="tile na" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="Not Applicable Findings" data-preset-status="Not_Applicable"><div class="n">${stats.Not_Applicable}</div><div class="lbl">Not Applicable</div></div>
+      <div class="tile na" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="Not Applicable Findings" data-preset-status="Not_Applicable"><div class="n">${stats.Not_Applicable}</div><div class="lbl">N/A</div></div>
     </div>`;
   }
 
@@ -1832,12 +1846,12 @@
     {key:"notReviewed", label:"Not Reviewed", default:false}
   ];
   const FINDING_COLS = [
-    {key:"id", label:"STIG ID", default:true, locked:true},
-    {key:"vulnId", label:"Vuln ID", default:true},
+    {key:"vulnId", label:"Vuln ID", default:false},
+    {key:"title", label:"Rule Title", default:true},
     {key:"sev", label:"Severity", default:true},
     {key:"status", label:"Status", default:true},
-    {key:"title", label:"Rule Title", default:true},
     {key:"source", label:"Source", default:true},
+    {key:"id", label:"STIG ID", default:false},
     {key:"crit", label:"Criticality", default:false},
     {key:"stig", label:"STIG", default:false},
     {key:"cci", label:"CCI", default:false}
@@ -1911,10 +1925,12 @@
     URL.revokeObjectURL(url);
   }
 
-  function controlsHtml(bladeId, state, colDefs, prefKey){
+  function controlsHtml(bladeId, state, colDefs, prefKey, showGroupBtn){
+    const groupBtn = showGroupBtn ? `<button type="button" class="group-btn ${state.grouped ? "grouped" : ""}" data-blade-id="${bladeId}" data-action="toggle-group">${state.grouped ? "Ungroup" : "Group"}</button>` : "";
     return `
       <div class="controls">
         <input class="search-input" data-blade-id="${bladeId}" data-action="search" type="text" placeholder="Search rule title, STIG ID, group..." value="${esc(state.search)}">
+        ${groupBtn}
         <button class="export-btn" data-blade-id="${bladeId}" data-action="export">↓ export CSV</button>
         ${colPickerHtml(prefKey, colDefs, bladeId, state)}
       </div>`;
@@ -1984,6 +2000,84 @@
       filterBtn = `<button type="button" class="col-filter-btn ${active?'active':''}" data-action="col-filter-toggle" data-blade-id="${blade.id}" data-filter-key="${opts.filterKey}" data-options='${esc(JSON.stringify(opts.filterOptions||[]))}' title="Filter">▾</button>`;
     }
     return `<th><div class="th-inner">${labelHtml}${filterBtn}</div></th>`;
+  }
+
+  // Findings blade "Group" view — collapses individual (host, rule) rows down
+  // to one row per distinct rule title + status combination, with a count of
+  // how many source rows (hosts) fall into that combination. Severity/Vuln ID
+  // are carried from the first matching row, since they're rule-level
+  // properties that should already be consistent across every host sharing
+  // that rule title. `repId` keeps that first row's id so a grouped row can
+  // still open the finding detail pane on click, same as an ungrouped row —
+  // it just shows one representative host's copy of the rule.
+  function groupFindingsByTitleStatus(vulns){
+    const map = new Map();
+    vulns.forEach(v=>{
+      const key = (v.ruleTitle||"") + "" + v.status;
+      let g = map.get(key);
+      if(!g){
+        g = {ruleTitle: v.ruleTitle, status: v.status, severity: v.severity, vulnNum: v.vulnNum, ruleVer: v.ruleVer, repId: v.id, count: 0};
+        map.set(key, g);
+      }
+      g.count++;
+    });
+    return Array.from(map.values());
+  }
+
+  const GROUPED_SORT_KEYS = ["vulnId","title","sev","status","count"];
+  function sortGroupedRows(rows, state){
+    const sevRank = {high:0, medium:1, low:2};
+    const statRank = {Open:0, Not_Reviewed:1, NotAFinding:2, Not_Applicable:3};
+    const usingFallback = !GROUPED_SORT_KEYS.includes(state.sortKey);
+    const key = usingFallback ? "count" : state.sortKey;
+    const dir = usingFallback ? -1 : state.sortDir; // default: most common findings first
+    return rows.slice().sort((a,b)=>{
+      let r = 0;
+      if(key==="sev") r = sevRank[a.severity]-sevRank[b.severity];
+      else if(key==="status") r = statRank[a.status]-statRank[b.status];
+      else if(key==="vulnId") r = (a.vulnNum||"").localeCompare(b.vulnNum||"", undefined, {numeric:true});
+      else if(key==="title") r = (a.ruleTitle||"").localeCompare(b.ruleTitle||"");
+      else if(key==="count") r = a.count-b.count;
+      return r*dir;
+    });
+  }
+
+  function groupedFindingsTableHtml(blade, rows){
+    const cols = [["title","Rule Title"],["sev","Severity"],["status","Status"],["count","Count"]];
+    const header = cols.map(([key,label])=>{
+      const filterKey = FINDING_FILTER_OPTIONS[key] ? key : null;
+      return thCellHtml(blade, key, label, {filterKey, filterOptions: filterKey ? FINDING_FILTER_OPTIONS[filterKey] : null});
+    }).join("");
+    const activeId = blade.state.activeVulnId;
+
+    // ---- Pagination: same page/pageSize state and paginationBarHtml as the
+    // ungrouped findingsTableHtml, so paging behaves identically either way.
+    const total = rows.length;
+    const pageSize = blade.state.pageSize === "all" ? "all" : (blade.state.pageSize || 20);
+    const totalPages = pageSize === "all" ? 1 : Math.max(1, Math.ceil(total / pageSize));
+    if(blade.state.page > totalPages) blade.state.page = totalPages;
+    if(blade.state.page < 1) blade.state.page = 1;
+    const page = blade.state.page;
+    const startIdx = pageSize === "all" ? 0 : (page - 1) * pageSize;
+    const endIdx = pageSize === "all" ? total : Math.min(total, startIdx + pageSize);
+    const pageRows = pageSize === "all" ? rows : rows.slice(startIdx, endIdx);
+
+    // Each grouped row still opens the finding detail pane on click, same as
+    // an ungrouped row — it drills into `repId`, the first underlying finding
+    // that was folded into this group (see groupFindingsByTitleStatus).
+    const bodyRows = total===0 ? `<tr class="empty-row"><td colspan="${cols.length}">no findings match the current filters</td></tr>` :
+      pageRows.map(r=>{
+        const active = activeId === r.repId;
+        return `<tr data-blade-id="${blade.id}" data-action="drill-finding" data-vuln-id="${esc(r.repId)}" class="${active?'active-row':''}">
+        <td class="title">${esc(r.ruleTitle)}</td>
+        <td class="sev"><span class="sev-tag ${SEV_CLASS[r.severity]||"c2"}">${SEV_LABEL[r.severity]||r.severity}</span></td>
+        <td><span class="status-pill ${r.status}">${STATUS_LABEL[r.status]||r.status}</span></td>
+        <td>${r.count}</td>
+      </tr>`;
+      }).join("");
+    return `
+      <div class="tablewrap"><table><thead><tr>${header}</tr></thead><tbody>${bodyRows}</tbody></table></div>
+      ${paginationBarHtml(blade, total, page, pageSize, totalPages, startIdx, endIdx)}`;
   }
 
   function findingsTableHtml(blade, vulns, showSource, sourceOptions, sourceLabel, sourceFilterable, stigOptions){
@@ -2070,7 +2164,8 @@
       activeVulnId: null,
       page: 1,
       pageSize: 20, // findings tables only — "all" shows every matching row
-      dashboardTab: "assets"
+      dashboardTab: "assets",
+      grouped: false // Findings blade only — groups rows by rule title + status
     };
     return {id:"blade"+bladeSeq, type, title, params, state};
   }
@@ -2284,14 +2379,16 @@
     const tabHtml = activeTab === "findings" ? (()=>{
       const {stats} = computeStats(allVulns);
       return `
-        <div style="margin-top:12px;">${dashboardTilesHtml(bladeIndex, stats)}</div>
-        <div class="donut-row">
+        <div class="compliance-split-row">
+          ${complianceBarsHtml(allVulns)}
+          ${dashboardTilesHtml(bladeIndex, stats)}
+        </div>
+        <div class="donut-row" style="margin-top:16px;">
           ${donutPanelHtml("by CAT", "Total findings (any status) grouped by STIG severity category.", catDonutEntries(bladeIndex, allVulns), "FINDINGS", "no findings loaded yet")}
           ${donutPanelHtml("by Criticality", "Open findings grouped by criticality — the same ACR × CAT criticality used in the matrix above.", criticalityDonutEntries(bladeIndex, hosts), "OPEN", "no open findings")}
           ${donutPanelHtml("by STIG", "Total findings (any status) grouped by STIG. The top 7 STIGs are broken out; the rest are grouped under Other.", stigDonutEntries(bladeIndex, hosts), "FINDINGS", "no findings loaded yet")}
         </div>
-        ${complianceBarsHtml(allVulns)}
-        <div class="matrix-row">
+        <div class="matrix-row" style="margin-top:16px;">
           ${acrCatMatrixHtml(bladeIndex, hosts)}
           ${critSummaryHtml(bladeIndex, hosts)}
         </div>`;
@@ -2515,15 +2612,119 @@
     // or filters the user has since applied) rather than every finding in
     // the dataset — otherwise they never change no matter what was clicked.
     const isFiltered = filtered.length !== vulns.length;
+    const {stats} = computeStats(filtered);
+    const grouped = !!blade.state.grouped;
+    // Export/row-detail lookups key off blade._lastVulns; findingsTableHtml
+    // normally sets this as a side effect, but it's skipped in grouped mode
+    // so set it here too, otherwise export would serve stale pre-toggle data.
+    blade._lastVulns = filtered;
     return `
       <div class="blade-meta"><span>${isFiltered ? `Showing <b>${filtered.length}</b> of <b>${vulns.length}</b> total rules` : `Total rules: <b>${vulns.length}</b>`}</span></div>
-      <div style="margin-top:6px;">${complianceBlockHtml(filtered)}</div>
-      ${controlsHtml(blade.id, blade.state, defs, "findings")}
-      ${findingsTableHtml(blade, filtered, true, sourceOptions, undefined, undefined, stigOptions)}`;
+      <div class="compliance-split-row">
+        ${complianceBarsHtml(filtered)}
+        <div class="tiles-stack">
+          <div class="tile open"><div class="n">${stats.Open}</div><div class="lbl">Open</div></div>
+          <div class="tile nr"><div class="n">${stats.Not_Reviewed}</div><div class="lbl">Not Reviewed</div></div>
+          <div class="tile naf"><div class="n">${stats.NotAFinding}</div><div class="lbl">Not a Finding</div></div>
+          <div class="tile na"><div class="n">${stats.Not_Applicable}</div><div class="lbl">N/A</div></div>
+        </div>
+      </div>
+      ${controlsHtml(blade.id, blade.state, defs, "findings", true)}
+      ${grouped
+        ? groupedFindingsTableHtml(blade, sortGroupedRows(groupFindingsByTitleStatus(filtered), blade.state))
+        : findingsTableHtml(blade, filtered, true, sourceOptions, "Host", undefined, stigOptions)}`;
   }
 
-  function renderFindingDetail(blade){
+  // Affected Assets sub-table — only shown on a finding detail pane opened
+  // from a grouped Findings row. Collapses the group's underlying (host,
+  // rule) matches down to one row per unique host, since the same host can
+  // occasionally carry the same rule title twice (e.g. two STIGs on one
+  // host reusing a rule title).
+  function affectedAssetRows(matchingVulns){
+    const hostsMap = new Map(groupAssetsByHost().map(h=>[h.hostKey, h]));
+    const seen = new Set();
+    const rows = [];
+    matchingVulns.forEach(v=>{
+      const hostKey = v._sourceLabel;
+      if(!hostKey || seen.has(hostKey)) return;
+      seen.add(hostKey);
+      const host = hostsMap.get(hostKey);
+      if(!host) return;
+      const acrInfo = getACR(host.hostKey, host);
+      const aesInfo = computeAES(host, acrInfo.value);
+      rows.push({hostKey: host.hostKey, hostName: host.hostName, hostIp: host.hostIp, acrInfo, aes: aesInfo.aes});
+    });
+    return rows;
+  }
+
+  function filterAffectedAssetRows(rows, state){
+    let r = rows;
+    if(state.colFilters.acr && state.colFilters.acr.size) r = r.filter(x=>state.colFilters.acr.has(acrBand(x.acrInfo.value)));
+    if(state.colFilters.aes && state.colFilters.aes.size) r = r.filter(x=>state.colFilters.aes.has(aesBand(x.aes)));
+    return r;
+  }
+
+  function sortAffectedAssetRows(rows, state){
+    const sorted = rows.slice();
+    sorted.sort((a,b)=>{
+      let r = 0;
+      if(state.sortKey==="hostIp") r = (a.hostIp||"").localeCompare(b.hostIp||"", undefined, {numeric:true});
+      else if(state.sortKey==="acr") r = a.acrInfo.value - b.acrInfo.value;
+      else if(state.sortKey==="aes") r = a.aes - b.aes;
+      else r = (a.hostName||"").localeCompare(b.hostName||""); // default / "hostName"
+      return r * state.sortDir;
+    });
+    return sorted;
+  }
+
+  function exportAffectedAssetsCSV(rows, label){
+    const out = [["Host Name","IP Address","ACR","AES"]];
+    rows.forEach(r=> out.push([r.hostName||"", r.hostIp||"", r.acrInfo.value, r.aes]));
+    const csv = out.map(r => r.map(c => '"' + String(c||"").replace(/"/g,'""') + '"').join(",")).join("\r\n");
+    const blob = new Blob([csv], {type:"text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = label + " - affected assets.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function affectedAssetsTableHtml(blade, bladeIndex, rows){
+    const ACR_FILTER_OPTIONS = [["9-10","9-10"],["7-8","7-8"],["4-6","4-6"],["1-3","1-3"]];
+    const AES_FILTER_OPTIONS = [["Critical","Critical"],["High","High"],["Medium","Medium"],["Low","Low"],["OK","OK"]];
+    const filtered = filterAffectedAssetRows(rows, blade.state);
+    const sorted = sortAffectedAssetRows(filtered, blade.state);
+    blade._lastAffectedAssets = sorted;
+    const header = [
+      thCellHtml(blade, "hostName", "Host Name", {}),
+      thCellHtml(blade, "hostIp", "IP Address", {}),
+      thCellHtml(blade, "acr", "ACR", {filterKey:"acr", filterOptions:ACR_FILTER_OPTIONS}),
+      thCellHtml(blade, "aes", "AES", {filterKey:"aes", filterOptions:AES_FILTER_OPTIONS})
+    ].join("");
+    const bodyRows = sorted.length===0 ? `<tr class="empty-row"><td colspan="4">no assets match the current filters</td></tr>` :
+      sorted.map(r=>`<tr data-action="drill" data-blade-index="${bladeIndex}" data-type="assetDetail" data-title="${esc(r.hostName)}" data-hostkey="${esc(r.hostKey)}">
+        <td class="title">${esc(r.hostName)}</td>
+        <td class="src">${esc(r.hostIp||"—")}</td>
+        <td>${acrBadgeHtml(r.acrInfo)}</td>
+        <td>${aesBadgeHtml(r.aes)}</td>
+      </tr>`).join("");
+    return `
+      <div class="fd-affected">
+        <div class="head"><h3>Affected Assets</h3><span class="overall">${sorted.length} of ${rows.length} asset${rows.length===1?"":"s"}</span></div>
+        <div class="controls">
+          <button class="export-btn" data-blade-id="${blade.id}" data-action="export-affected-assets">↓ export CSV</button>
+        </div>
+        <div class="tablewrap"><table><thead><tr>${header}</tr></thead><tbody>${bodyRows}</tbody></table></div>
+      </div>`;
+  }
+
+  function renderFindingDetail(blade, bladeIndex){
     const v = blade.params.vuln;
+    const parentBlade = bladeStack.find(b=>b.id===blade.params.parentBladeId);
+    const isGroupedContext = !!(parentBlade && parentBlade.type==="findings" && parentBlade.state.grouped);
+    const affectedHtml = isGroupedContext
+      ? affectedAssetsTableHtml(blade, bladeIndex, affectedAssetRows((parentBlade._lastVulns||[]).filter(x=>x.ruleTitle===v.ruleTitle && x.status===v.status)))
+      : "";
     return `
       <div class="fd-tags">
         <span class="sev-tag ${SEV_CLASS[v.severity]||"c2"}">${SEV_LABEL[v.severity]||v.severity}</span>
@@ -2538,7 +2739,8 @@
         ${v.findingDetails ? `<h4>Finding Details</h4><pre>${esc(v.findingDetails)}</pre>` : ""}
         ${v.comments ? `<h4>Comments</h4><pre class="comments">${esc(v.comments)}</pre>` : ""}
         ${v.cci ? `<h4>CCI</h4><pre>${esc(v.cci)}</pre>` : ""}
-      </div>`;
+      </div>
+      ${affectedHtml}`;
   }
 
   function sortImportRows(rows, state){
@@ -2664,7 +2866,7 @@
       case "stigs": return renderStigsList(blade, bladeIndex);
       case "stigDetail": return renderStigDetail(blade, bladeIndex);
       case "findings": return renderFindingsList(blade, bladeIndex);
-      case "findingDetail": return renderFindingDetail(blade);
+      case "findingDetail": return renderFindingDetail(blade, bladeIndex);
       case "import": return renderImport(blade);
       case "changelog": return renderChangelog(blade, bladeIndex);
       case "changelogDetail": return renderChangelogDetail(blade);
@@ -3068,6 +3270,17 @@
       return;
     }
 
+    const groupToggleEl = e.target.closest('[data-action="toggle-group"]');
+    if(groupToggleEl){
+      const blade = bladeStack.find(b=>b.id===groupToggleEl.dataset.bladeId);
+      if(blade){
+        blade.state.grouped = !blade.state.grouped;
+        blade.state.page = 1;
+        refreshBlade(blade.id);
+      }
+      return;
+    }
+
     const pageFirstEl = e.target.closest('[data-action="page-first"]');
     if(pageFirstEl){
       const blade = bladeStack.find(b=>b.id===pageFirstEl.dataset.bladeId);
@@ -3103,6 +3316,13 @@
     if(exportEl){
       const blade = bladeStack.find(b=>b.id===exportEl.dataset.bladeId);
       if(blade) exportCSV(blade._lastVulns||[], (blade.title||"ckl").replace(/[^a-z0-9]+/gi,"_").toLowerCase());
+      return;
+    }
+
+    const exportAssetsEl = e.target.closest('[data-action="export-affected-assets"]');
+    if(exportAssetsEl){
+      const blade = bladeStack.find(b=>b.id===exportAssetsEl.dataset.bladeId);
+      if(blade) exportAffectedAssetsCSV(blade._lastAffectedAssets||[], (blade.params.vuln && blade.params.vuln.vulnNum) || blade.title || "finding");
       return;
     }
 
