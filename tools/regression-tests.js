@@ -347,13 +347,96 @@ section("AES / CES math");
   const acrInfo = getACR(host.hostKey, host);
   const aesInfo = computeAES(host, acrInfo.value);
   check(aesInfo.aes >= 0 && aesInfo.aes <= 1000, "AES stays within 0-1000 bounds");
-  const rows = hosts.map(buildAssetRow);
+  const rows = buildAssetRows(hosts);
   const ces = computeCES(rows);
   check(ces >= 0 && ces <= 1000, "CES stays within 0-1000 bounds");
   const points = cesHistory();
   if(points.length){
     const last = points[points.length-1];
     check(Math.abs(last.aes - ces) <= 1, "latest CES-over-time point matches current dashboard CES (within rounding)");
+  }
+}
+
+// ======================================================================
+// Security — output encoding and CSV formula injection.
+// Checklist content (filenames, hostnames, rule text, comments) is
+// untrusted input: it comes from whatever scanner/operator produced the
+// file. These guard the escaping boundaries.
+// ======================================================================
+section("Security — escaping and CSV injection");
+{
+  // --- HTML attribute escaping for a hostile filename -----------------
+  // v.id is derived from the filename, and is emitted into the
+  // data-vuln-id attribute. An unescaped quote there breaks out of the
+  // attribute and injects arbitrary handlers.
+  const hostileName = 'evil" onmouseover="alert(1)" x=".cklb';
+  const donor = assets[0];
+  const craft = {
+    id: hostileName + "_0-0",
+    ruleTitle: 'title with "quotes" & <b>markup</b>',
+    ruleVer: "RV-1", vulnNum: "V-1", severity: "high", status: "Open",
+    groupTitle: "", discussion: "", checkContent: "", fixText: "",
+    comments: "", cci: "", _sourceLabel: '<img src=x onerror=alert(1)>',
+  };
+  const blade = newBlade("findings", "Findings", {});
+  const html = findingsTableHtml(blade, [craft], true, [], "Host", true, []);
+  check(!html.includes('onmouseover="alert(1)"'),
+    "hostile filename in data-vuln-id cannot break out of the attribute");
+  check(html.includes("&quot;") || html.includes("&#39;"),
+    "hostile filename is entity-escaped in the row attribute");
+  check(!/<img src=x onerror/.test(html),
+    "hostile source label is escaped, not injected as a live <img> tag");
+  check(!html.includes("<b>markup</b>"),
+    "hostile rule title is escaped, not injected as live markup");
+
+  // --- CSV formula injection ------------------------------------------
+  // Excel/Sheets execute a cell beginning with = + - @ as a formula.
+  check(csvCell("=cmd|'/c calc'!A1").startsWith("\\"'="),
+    "CSV cell starting with = is neutralized with a leading apostrophe");
+  ["+1+1", "-1+1", "@SUM(A1)"].forEach(danger=>{
+    check(csvCell(danger).startsWith("\\"'"), \`CSV cell starting with \${danger[0]} is neutralized\`);
+  });
+  check(csvCell("normal text") === '"normal text"', "ordinary CSV cells are untouched apart from quoting");
+  check(csvCell('has "quotes"') === '"has ""quotes"""', "embedded quotes are still doubled correctly");
+  // 0 must survive as "0" — the old String(c||"") idiom turned it into ""
+  check(csvCell(0) === '"0"', "numeric zero exports as 0, not an empty cell");
+  check(csvCell(null) === '""' && csvCell(undefined) === '""', "null/undefined export as empty cells");
+}
+
+// ======================================================================
+// Robustness / performance invariants
+// ======================================================================
+section("Robustness and performance invariants");
+{
+  // buildAssetRow must tolerate being used as a .map() callback, where the
+  // second argument is an array index rather than the history Map.
+  let mapCallbackOk = true;
+  try { hosts.slice(0, 3).map(buildAssetRow); } catch (e) { mapCallbackOk = false; }
+  check(mapCallbackOk, "buildAssetRow survives being passed straight to .map() (index as 2nd arg)");
+
+  // The shared-map path and the standalone path must agree exactly.
+  const counts = historyCountsByHost();
+  const viaShared = hosts.map(h => buildAssetRow(h, counts).history);
+  const viaSolo = hosts.map(h => buildAssetRow(h).history);
+  check(JSON.stringify(viaShared) === JSON.stringify(viaSolo),
+    "history counts identical whether computed per-row or from the shared map");
+  check(viaShared.every(n => n >= 1), "every host reports at least one imported checklist");
+
+  // groupAssetsByHost must ignore a non-array argument rather than crash.
+  let groupOk = true;
+  try { groupAssetsByHost(0); groupAssetsByHost(undefined); } catch (e) { groupOk = false; }
+  check(groupOk, "groupAssetsByHost tolerates a non-array argument");
+  check(groupAssetsByHost(latestAssets()).length === groupAssetsByHost().length,
+    "passing a precomputed latestAssets() yields the same host grouping");
+
+  // parseScanDate memoization must not leak mutable state between callers.
+  const sample = assets.find(a => a.scanDate && parseScanDate(a.scanDate));
+  if(sample){
+    const d1 = parseScanDate(sample.scanDate);
+    const d2 = parseScanDate(sample.scanDate);
+    check(d1.getTime() === d2.getTime(), "parseScanDate returns a consistent value when memoized");
+    check(parseScanDate("") === null && parseScanDate(null) === null, "parseScanDate still rejects empty input");
+    check(parseScanDate("not a date") === null, "parseScanDate still rejects unparseable input");
   }
 }
 

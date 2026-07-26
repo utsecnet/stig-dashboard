@@ -81,6 +81,9 @@
   }
   .ledger button:hover{color:var(--text);border-color:var(--dim);}
   .ledger input[type=file]{display:none;}
+  /* Blinking caret after the ledger's "awaiting file" prompt. Was referenced
+     in the markup but never defined, so the caret rendered as a static "_". */
+  .cursor-inline{color:var(--naf);animation:pulse 1.1s step-end infinite;}
 
   /* ===== Empty / dropzone state ===== */
   .empty-stage{
@@ -579,14 +582,23 @@
   // Parses a scanDate string from parseCKL/parseCKLB (ISO 8601 from CKLB's
   // evaluate-stig.time, or "yyyy-mm-dd" from CKL's regex fallback) into a
   // Date, or null if missing/unparseable.
+  // Memoized: scan-date strings repeat heavily (every STIG from one scan run
+  // shares a timestamp) and this sits inside the O(dates x assets) loops in
+  // cesHistory()/aesHistory(), where re-parsing the same handful of strings
+  // was allocating millions of Date objects on large imports. Cache is keyed
+  // by the raw string and only ever grows to the number of distinct dates.
+  const _scanDateCache = new Map();
   function parseScanDate(str){
     if(!str) return null;
+    if(_scanDateCache.has(str)) return _scanDateCache.get(str);
     const d = new Date(str);
-    return isNaN(d.getTime()) ? null : d;
+    const result = isNaN(d.getTime()) ? null : d;
+    _scanDateCache.set(str, result);
+    return result;
   }
   const CHANGELOG = [
     {version:"2026.1", date: formatToday(), notes:["Initial release"]},
-    {version:"2026.1.01", date: formatToday(), features:["Added CKL/CKLB file import indicator", "Added Vuln ID column to Findings tables", "Widened Findings blade for readability", "Added Last Scanned column to Assets table", "Asset Detail now shows last scanned date", "Added History column (checklist count) to Assets table", "Added AES Over Time chart to Asset Detail", "Tightened Asset Detail layout for space efficiency", "Added CES Over Time chart to top of Dashboard", "Combined compliance bars and tiles on Findings dashboard", "Made STIG ID column optional; reordered Findings columns", "Vuln ID column now hidden by default but still searchable", "Combined compliance bars and tiles on Findings blade", "Added Group/Ungroup button to Findings blade", "Renamed Source column to Host on Findings blade", "Added Affected Assets list to finding detail (grouped view)"], fixes:["Removed dead filter-chip code", "Cut redundant ACR recalculation on asset views", "Change log now lists newest release first", "Re-scanned STIGs no longer double-count in totals", "AES no longer saturates and ignores compliance changes", "AES vs Finding Count now counts only open/not-reviewed findings"]}
+    {version:"2026.1.01", date: formatToday(), features:["Added CKL/CKLB file import indicator", "Added Vuln ID column to Findings tables", "Widened Findings blade for readability", "Added Last Scanned column to Assets table", "Asset Detail now shows last scanned date", "Added History column (checklist count) to Assets table", "Added AES Over Time chart to Asset Detail", "Tightened Asset Detail layout for space efficiency", "Added CES Over Time chart to top of Dashboard", "Combined compliance bars and tiles on Findings dashboard", "Made STIG ID column optional; reordered Findings columns", "Vuln ID column now hidden by default but still searchable", "Combined compliance bars and tiles on Findings blade", "Added Group/Ungroup button to Findings blade", "Renamed Source column to Host on Findings blade", "Added Affected Assets list to finding detail (grouped view)"], fixes:["Removed dead filter-chip code", "Cut redundant ACR recalculation on asset views", "Change log now lists newest release first", "Re-scanned STIGs no longer double-count in totals", "AES no longer saturates and ignores compliance changes", "AES vs Finding Count now counts only open/not-reviewed findings", "Escaped finding row IDs to block HTML injection", "Neutralized spreadsheet formula injection in CSV exports", "Unreadable files no longer stall the import loader", "Import errors now report once, not per file", "Restored blinking caret on awaiting-file prompt", "Sped up rendering for large asset fleets"]}
   ];
 
   let assets = []; // {id, fileName, hostName, hostIp, stigTitle, stigVersion, releaseInfo, vulns:[...]}
@@ -824,7 +836,30 @@
     let remaining = files.length;
     const total = files.length;
     let done = 0;
+    // Problems are collected and reported once at the end rather than as one
+    // blocking alert() per file — dropping a folder of 50 checklists where
+    // several are unreadable used to mean dismissing 50 dialogs in a row.
+    const problems = [];
     bgLoaderStart(total);
+
+    // Runs whether the file parsed, failed to parse, or failed to read at
+    // all. Without an onerror path a single unreadable file left `remaining`
+    // stuck above zero, so the loading indicator never cleared and the
+    // blades never refreshed with the files that did load.
+    const finishOne = ()=>{
+      remaining--; done++;
+      bgLoaderProgress(done, total);
+      if(remaining > 0) return;
+      bgLoaderEnd();
+      if(bladeStack.length === 0){ goMenu("dashboard"); }
+      else { updateShellChrome(); refreshDependentBlades(()=>true); }
+      if(problems.length){
+        const shown = problems.slice(0, 10).join("\n");
+        const more = problems.length > 10 ? `\n…and ${problems.length - 10} more.` : "";
+        alert(`${problems.length} of ${total} file${total>1?"s":""} could not be loaded:\n\n${shown}${more}`);
+      }
+    };
+
     files.forEach(f=>{
       const reader = new FileReader();
       reader.onload = e=>{
@@ -832,20 +867,19 @@
           const isCklb = /\.cklb$/i.test(f.name);
           const newAssets = isCklb ? parseCKLB(e.target.result, f.name) : parseCKL(e.target.result, f.name);
           if(!newAssets.length){
-            alert(f.name + " parsed but contained no STIGs/rules.");
+            problems.push(`${f.name} — parsed but contained no STIGs/rules`);
           }
           newAssets.forEach(a => assets.push(a));
         }catch(err){
           console.error("Failed to parse", f.name, err);
-          alert("Could not parse " + f.name + " — is it a valid CKL/CKLB file?");
+          problems.push(`${f.name} — not a valid CKL/CKLB file`);
         }
-        remaining--; done++;
-        bgLoaderProgress(done, total);
-        if(remaining === 0){
-          bgLoaderEnd();
-          if(bladeStack.length === 0){ goMenu("dashboard"); }
-          else { updateShellChrome(); refreshDependentBlades(()=>true); }
-        }
+        finishOne();
+      };
+      reader.onerror = ()=>{
+        console.error("Failed to read", f.name, reader.error);
+        problems.push(`${f.name} — could not be read from disk`);
+        finishOne();
       };
       reader.readAsText(f);
     });
@@ -1265,7 +1299,7 @@
 
     const dots = points.map((p,i)=>{
       const x = xOf(i), y = yOf(p.aes);
-      return `<circle class="aes-trend-pt" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5" fill="${bandColor(p.aes)}" stroke="#0a0f13" stroke-width="1.5"><title>${esc(formatDateISO(p.date))} — ${label} ${p.aes}</title></circle>`;
+      return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5" fill="${bandColor(p.aes)}" stroke="#0a0f13" stroke-width="1.5"><title>${esc(formatDateISO(p.date))} — ${label} ${p.aes}</title></circle>`;
     }).join("");
 
     return `<svg viewBox="0 0 ${W} ${H}" class="trend-svg">
@@ -1911,12 +1945,27 @@
     return v;
   }
 
+  // CSV cells are prefixed with a single quote when they begin with =, +, -,
+  // @, tab or CR. Checklist content is untrusted free text (rule titles,
+  // comments, finding details written by whoever ran the scan), and Excel /
+  // Sheets treat a leading =/+/-/@ as a live formula — so an exported cell
+  // like "=cmd|'/c calc'!A1" would execute on open. Quoting alone doesn't
+  // stop that; the leading apostrophe forces the cell to stay text.
+  function csvCell(value){
+    let s = String(value == null ? "" : value);
+    if(/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    return '"' + s.replace(/"/g,'""') + '"';
+  }
+  function toCSV(rows){
+    return rows.map(r => r.map(csvCell).join(",")).join("\r\n");
+  }
+
   function exportCSV(vulns, label){
     const rows = [["Source File","STIG ID","Vuln ID","Severity","Status","Criticality","Rule Title","CCI","Comments"]];
     vulns.forEach(v=>{
       rows.push([v._sourceLabel||"", v.ruleVer, v.vulnNum, SEV_LABEL[v.severity]||v.severity, STATUS_LABEL[v.status]||v.status, v._criticality||"", v.ruleTitle, v.cci, (v.comments||"").replace(/\n/g," ")]);
     });
-    const csv = rows.map(r => r.map(c => '"' + String(c||"").replace(/"/g,'""') + '"').join(",")).join("\r\n");
+    const csv = toCSV(rows);
     const blob = new Blob([csv], {type:"text/csv"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -2126,7 +2175,7 @@
               default: return `<td></td>`;
             }
           }).join("");
-          return `<tr data-blade-id="${blade.id}" data-action="drill-finding" data-vuln-id="${v.id}" class="${active?'active-row':''}">${cells}</tr>`;
+          return `<tr data-blade-id="${blade.id}" data-action="drill-finding" data-vuln-id="${esc(v.id)}" class="${active?'active-row':''}">${cells}</tr>`;
         }).join("");
     return `
       <div class="tablewrap">
@@ -2202,21 +2251,38 @@
   }
 
   // Counts distinct checklist files ever imported for a host — the Assets
-  // table's History column. Deliberately scans the raw `assets` array (every
+  // table's History column. Deliberately reads the raw `assets` array (every
   // import, not latestAssets()'s deduped view) so a host that's been
   // re-scanned shows its full import count (e.g. 3), not just how many
   // distinct STIGs are currently active.
-  function historyCount(hostKey){
-    const files = new Set();
+  //
+  // Built as one map for the whole fleet rather than re-scanning `assets`
+  // per host: buildAssetRow() runs once per row, so the old per-host scan
+  // made rendering the Assets table O(hosts x imports).
+  function historyCountsByHost(){
+    const map = new Map();
     assets.forEach(a=>{
-      if((a.hostName||a.fileName) === hostKey) files.add(a.sourceFile || a.fileName);
+      const hostKey = a.hostName || a.fileName;
+      let files = map.get(hostKey);
+      if(!files){ files = new Set(); map.set(hostKey, files); }
+      files.add(a.sourceFile || a.fileName);
     });
-    return files.size;
+    return map;
+  }
+  // The Map argument is validated rather than assumed: buildAssetRow is a
+  // natural fit for `hosts.map(buildAssetRow)`, which would silently hand
+  // this an array index instead. Falling back keeps that correct.
+  function historyCount(hostKey, counts){
+    const map = (counts instanceof Map) ? counts : historyCountsByHost();
+    const files = map.get(hostKey);
+    return files ? files.size : 0;
   }
 
-  function groupAssetsByHost(){
+  // `latest` is optional — callers that already computed latestAssets() can
+  // pass it in to avoid a second dedup pass over the whole import set.
+  function groupAssetsByHost(latest){
     const map = new Map();
-    latestAssets().forEach(a=>{
+    (Array.isArray(latest) ? latest : latestAssets()).forEach(a=>{
       const key = a.hostName || a.fileName;
       if(!map.has(key)) map.set(key, {hostKey:key, hostName:a.hostName||key, hostIp:a.hostIp, role:a.role, stigs:[]});
       map.get(key).stigs.push(a);
@@ -2224,7 +2290,10 @@
     return Array.from(map.values());
   }
 
-  function buildAssetRow(host){
+  // `historyCounts` is optional — pass the shared map from buildAssetRows()
+  // when building a whole table so the per-host counts aren't recomputed for
+  // every row. Callers building a single row can omit it.
+  function buildAssetRow(host, historyCounts){
     let total=0, open=0, nr=0, naf=0, na=0;
     host.stigs.forEach(a=>a.vulns.forEach(v=>{
       total++;
@@ -2237,8 +2306,15 @@
     const acrInfo = getACR(host.hostKey, host);
     const aesInfo = computeAES(host, acrInfo.value);
     const scanInfo = lastScannedInfo(host);
-    const history = historyCount(host.hostKey);
+    const history = historyCount(host.hostKey, historyCounts);
     return {host, total, open, nr, naf, na, compliance, acr:acrInfo.value, acrOverride:acrInfo.isOverride, acrInfo, aes:aesInfo.aes, os:inferHostOS(host), lastScanned:scanInfo.date, lastScannedInfo:scanInfo, history};
+  }
+
+  // Builds every asset row for a table in one pass, sharing the fleet-wide
+  // history map across all rows.
+  function buildAssetRows(hosts){
+    const counts = historyCountsByHost();
+    return hosts.map(h => buildAssetRow(h, counts));
   }
 
   function filterAssetRows(rows, state){
@@ -2368,10 +2444,13 @@
   // (it gets discarded the moment the user switches tabs, which re-renders
   // the blade from scratch anyway via refreshBlade).
   function renderDashboard(blade, bladeIndex){
+    // One dedup pass shared by both the findings roll-up and the host
+    // grouping — groupAssetsByHost() would otherwise redo latestAssets().
+    const latest = latestAssets();
     const allVulns = [];
-    latestAssets().forEach(a => a.vulns.forEach(v => allVulns.push(v)));
-    const hosts = groupAssetsByHost();
-    const rows = hosts.map(buildAssetRow);
+    latest.forEach(a => a.vulns.forEach(v => allVulns.push(v)));
+    const hosts = groupAssetsByHost(latest);
+    const rows = buildAssetRows(hosts);
     lastDashboardRows = rows;
     lastDashboardBladeIndex = bladeIndex;
     const activeTab = blade.state.dashboardTab || "assets";
@@ -2406,13 +2485,13 @@
         <div class="dash-tab ${activeTab==="assets"?"active":""}" data-action="dash-tab" data-blade-id="${blade.id}" data-tab="assets">Assets (${hosts.length})</div>
         <div class="dash-tab ${activeTab==="findings"?"active":""}" data-action="dash-tab" data-blade-id="${blade.id}" data-tab="findings">Findings (${allVulns.length})</div>
       </div>
-      <div class="dash-tab-panel">${tabHtml}</div>`;
+      <div>${tabHtml}</div>`;
   }
 
   function renderAssetsList(blade, bladeIndex){
     const hosts = groupAssetsByHost();
     if(!hosts.length) return `<div class="empty-note">no assets loaded yet</div>`;
-    const allRows = hosts.map(buildAssetRow);
+    const allRows = buildAssetRows(hosts);
     let rows = filterAssetRows(allRows, blade.state);
     rows = sortAssetRows(rows, blade.state);
     const defs = ASSET_COLS;
@@ -2680,7 +2759,7 @@
   function exportAffectedAssetsCSV(rows, label){
     const out = [["Host Name","IP Address","ACR","AES"]];
     rows.forEach(r=> out.push([r.hostName||"", r.hostIp||"", r.acrInfo.value, r.aes]));
-    const csv = out.map(r => r.map(c => '"' + String(c||"").replace(/"/g,'""') + '"').join(",")).join("\r\n");
+    const csv = toCSV(out);
     const blob = new Blob([csv], {type:"text/csv"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
