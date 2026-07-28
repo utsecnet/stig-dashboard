@@ -358,6 +358,143 @@ section("AES / CES math");
 }
 
 // ======================================================================
+// Trend chart x-axis labels — dates must never collide. Short histories
+// stay horizontal; longer ones angle diagonally (-45°) and, past a point,
+// thin out. Every point keeps its hover tooltip either way.
+// ======================================================================
+section("Trend chart — date label collision");
+{
+  const mk = n => Array.from({length:n}, (_,i)=>({date:new Date(2026,6,1+i), aes:400-i}));
+  const gap = svg => {
+    const xs = [...svg.matchAll(/<text x="([\\d.]+)"[^>]*>2026-/g)].map(m=>parseFloat(m[1])).sort((a,b)=>a-b);
+    let g = Infinity;
+    for(let i=1;i<xs.length;i++) g = Math.min(g, xs[i]-xs[i-1]);
+    return {gap:g, count:xs.length};
+  };
+
+  // At a 45° angle, a ~54px-wide/11px-tall label's horizontal footprint is
+  // (54*cos45 + 11*sin45) ~= 46px, plus the same +2px pad aesTimelineSvg uses.
+  [1,2,5,10,13,14,15,20,25,30,40,60,90,120,200,365].forEach(n=>{
+    const svg = aesTimelineSvg(mk(n), "AES");
+    const rotated = svg.includes("rotate(-45");
+    const {gap:g, count} = gap(svg);
+    const need = rotated ? 48 : 54;   // angled labels need their diagonal footprint, not their full width
+    check(count < 2 || g >= need,
+      \`\${n}-point series: labels do not overlap (\${rotated?"angled":"horizontal"}, min gap \${g===Infinity?"n/a":g.toFixed(1)}px)\`);
+    // No matter how labels are thinned, every data point keeps its dot+tooltip.
+    check((svg.match(/<circle/g)||[]).length === n, \`\${n}-point series: every point still plotted\`);
+    check((svg.match(/<title>/g)||[]).length === n, \`\${n}-point series: every point keeps its hover tooltip\`);
+  });
+
+  // Short histories must NOT angle — angling is the fallback, not the default.
+  check(!aesTimelineSvg(mk(5), "AES").includes("rotate(-45"), "a 5-point history keeps horizontal date labels");
+  check(aesTimelineSvg(mk(25), "AES").includes("rotate(-45"), "a 25-point history angles its date labels");
+  // And it must not be a full vertical flip anymore.
+  check(!aesTimelineSvg(mk(25), "AES").includes("rotate(-90"), "a 25-point history is angled, not fully vertical");
+
+  // Angling grows the SVG downward rather than squashing the plot area.
+  const short = aesTimelineSvg(mk(5), "AES").match(/viewBox="0 0 (\\d+) (\\d+)"/);
+  const tall  = aesTimelineSvg(mk(25), "AES").match(/viewBox="0 0 (\\d+) (\\d+)"/);
+  check(short[2] === "220", "unrotated chart keeps its original 220px viewBox height");
+  check(+tall[2] > +short[2], "angled chart grows taller to make room for diagonal labels");
+
+  // First and last dates are always labeled so the range stays readable.
+  const big = aesTimelineSvg(mk(200), "AES");
+  check(big.includes(">2026-07-01<"), "first date is always labeled, even on a long series");
+  const lastDate = formatDateISO(mk(200)[199].date);
+  check(big.includes(">"+lastDate+"<"), "last date is always labeled, even on a long series");
+}
+
+// ======================================================================
+// CCI -> RMF control number mapping (Control Number column: top-level
+// Findings blade + the per-asset findings table inside Asset Detail — both
+// share FINDING_COLS/the "findings" col-prefs key, so one toggle covers
+// both. Deliberately NOT on the Assets list table, which lists one row per
+// host, not per finding.) Source-data quirks this must handle: a CCI id can
+// carry a trailing " deprecated" suffix in the DISA export it's built from,
+// and a finding's raw cci field can mix legacy SV-/V- ids in with the real
+// CCI-###### ids (this is exactly what a user spotted in the CCI column of
+// sw-core03.cklb — "SV-110523, V-101419, CCI-000382" — which is why this
+// feature exists).
+// ======================================================================
+section("CCI -> RMF control number mapping");
+{
+  check(CCI_CONTROL_MAP["CCI-000382"] === "CM-7", "known CCI resolves to its control number");
+  check(CCI_CONTROL_MAP["CCI-000191"] === "IA-5(1)", "a CCI whose source row carries a trailing \\" deprecated\\" marker still resolves under its bare id");
+  check(!("CCI-000191 deprecated" in CCI_CONTROL_MAP), "the \\" deprecated\\" marker itself is not a map key");
+
+  // sw-core03.cklb's raw ccis array mixes legacy SV-/V- ids in with the real
+  // CCI id — controlNumbersForCciField must pull out just the CCI token.
+  check(controlNumbersForCciField("SV-110523, V-101419, CCI-000382") === "CM-7",
+    "legacy SV-/V- ids mixed into a cci field are ignored; only the CCI token resolves");
+
+  // A CCI that legitimately maps to more than one control stays a
+  // comma-separated, de-duplicated, sorted list.
+  check(controlNumbersForCciField("CCI-000296, CCI-000305") === "CM-2, CM-2(1), CM-2(4), CM-7(2)",
+    "multiple CCIs resolve to their combined, de-duplicated, sorted control list");
+
+  check(controlNumbersForCciField("CCI-999999") === "", "an unmapped/unknown CCI resolves to nothing, not a crash");
+  check(controlNumbersForCciField("") === "" && controlNumbersForCciField(undefined) === "", "empty/missing cci field resolves to an empty string");
+
+  // Column config: on the Findings columns (shared by the top-level Findings
+  // blade and the Asset Detail findings table), hidden by default like CCI
+  // itself — and deliberately absent from ASSET_COLS (the host-list table).
+  const findingCtrlCol = FINDING_COLS.find(c => c.key === "control");
+  check(!!findingCtrlCol && findingCtrlCol.label === "Control Number" && findingCtrlCol.default === false,
+    'Findings columns have a hidden-by-default "Control Number" column');
+  check(!ASSET_COLS.some(c => c.key === "control"),
+    "Assets (host-list) table does NOT get a Control Number column — that table is one row per host, not per finding");
+
+  const knownFinding = allVulns.find(v => (v.cci||"").includes("CCI-000382"));
+  check(!!knownFinding, "found the sample finding with CCI-000382 to check the rendered cell against");
+
+  // Top-level Findings blade: the real sample finding with CCI-000382
+  // renders its mapped control number once the column is switched on.
+  getVisibleCols("findings", FINDING_COLS).add("control");
+  const findingsHtml = renderFindingsList(newBlade("findings", "Findings", {}), 0);
+  check(findingsHtml.includes(">Control Number<"), "Control Number header renders on the top-level Findings blade once enabled");
+  check(findingsHtml.includes(">CM-7<"), "the CCI-000382 finding's row shows its mapped control number (CM-7) on the Findings blade");
+
+  // Asset Detail's own per-host findings table — the pane you land on after
+  // clicking into an asset from the Assets list — must show the same column
+  // and value, since it renders through the same findingsTableHtml/FINDING_COLS.
+  const hostWithFinding = hosts.find(h => (h.stigs||[]).some(a => a.vulns.some(v => (v.cci||"").includes("CCI-000382"))));
+  check(!!hostWithFinding, "found the host that owns the CCI-000382 finding, to test its Asset Detail pane");
+  const assetDetailHtml = renderAssetDetail(newBlade("asset-detail", "Asset", { hostKey: hostWithFinding.hostKey }), 0);
+  check(assetDetailHtml.includes(">Control Number<"), "Control Number header renders inside Asset Detail's findings table once enabled");
+  check(assetDetailHtml.includes(">CM-7<"), "Asset Detail's findings table shows the mapped control number (CM-7) for the matching row");
+  getVisibleCols("findings", FINDING_COLS).delete("control");
+
+  // CSV export includes the new column, correctly mapped.
+  let capturedBlob = null;
+  const realCreateObjectURL = URL.createObjectURL;
+  URL.createObjectURL = function(b){ capturedBlob = b; return realCreateObjectURL(b); };
+  exportCSV([knownFinding], "test");
+  URL.createObjectURL = realCreateObjectURL;
+  const csvText = capturedBlob ? capturedBlob.parts[0] : "";
+  check(csvText.includes("Control Number"), "CSV export header row includes \\"Control Number\\"");
+  check(csvText.includes("CM-7"), "CSV export row includes the mapped control number");
+
+  // Control Number must be searchable even while its column is hidden by
+  // default — same convention as Vuln ID (tested above).
+  const searchBlade = newBlade("findings", "Findings", {});
+  searchBlade.state.search = "CM-7";
+  const bySearch = filterVulns(allVulns, searchBlade.state);
+  check(bySearch.some(v => v.id === knownFinding.id), "searching by Control Number (\\"CM-7\\") matches the CCI-000382 finding, even with the column hidden");
+  searchBlade.state.search = "cm-7";
+  check(filterVulns(allVulns, searchBlade.state).some(v => v.id === knownFinding.id), "Control Number search is case-insensitive");
+
+  // The search box placeholder should be a plain, unconfusing "Search..."
+  // rather than naming internal fields the user won't recognize (a prior
+  // version said "Search rule title, STIG ID, group..." — "group" in
+  // particular confused users, since it doesn't correspond to anything
+  // visible in the UI).
+  const controlsBarHtml = controlsHtml(searchBlade.id, searchBlade.state, FINDING_COLS, "findings", true);
+  check(controlsBarHtml.includes('placeholder="Search..."'), 'Findings search box placeholder is a plain "Search..."');
+  check(!controlsBarHtml.includes("STIG ID, group"), "Findings search box no longer names internal fields like \\"group\\" in its placeholder");
+}
+
+// ======================================================================
 // Security — output encoding and CSV formula injection.
 // Checklist content (filenames, hostnames, rule text, comments) is
 // untrusted input: it comes from whatever scanner/operator produced the
@@ -438,6 +575,53 @@ section("Robustness and performance invariants");
     check(parseScanDate("") === null && parseScanDate(null) === null, "parseScanDate still rejects empty input");
     check(parseScanDate("not a date") === null, "parseScanDate still rejects unparseable input");
   }
+}
+
+// ======================================================================
+// AES/CES history — one checkpoint per calendar day, not per exact scan
+// timestamp. Regression: Evaluate-STIG stamps each STIG in a multi-STIG
+// CKLB with its own evaluate-stig.time, typically a few seconds or minutes
+// apart — a single one-host, one-day import was fracturing into as many
+// "history" points as it had STIGs, all rendering the same date on the
+// x-axis (reported by a user: uploading one CKLB for one host showed ~11
+// same-day points on the AES Over Time chart).
+//
+// This section mutates the shared \`assets\` array, so it must run LAST —
+// every earlier section already ran against the pristine sample-data state.
+// ======================================================================
+section("AES/CES history — day-granularity checkpoints");
+{
+  const mkVuln = status => ({id:"v", vulnNum:"V-1", ruleVer:"SV-1", ruleTitle:"t", severity:"medium", status, groupTitle:"", discussion:"", checkContent:"", fixText:"", cci:"", comments:""});
+  const HOST = "REGRESSION-MULTI-STIG-HOST";
+
+  // Day 1: three STIGs for the same host, same calendar day, each stamped a
+  // few minutes apart — exactly the real-world shape that triggered the bug.
+  assets.push({id:"r1", fileName:"r1.cklb", hostName:HOST, hostIp:"", role:"", stigTitle:"STIG A", stigVersion:"1", releaseInfo:"", scanDate:"2026-07-22T09:00:00Z", vulns:[mkVuln("Open"), mkVuln("NotAFinding")]});
+  assets.push({id:"r2", fileName:"r2.cklb", hostName:HOST, hostIp:"", role:"", stigTitle:"STIG B", stigVersion:"1", releaseInfo:"", scanDate:"2026-07-22T09:03:12Z", vulns:[mkVuln("Open"), mkVuln("NotAFinding")]});
+  assets.push({id:"r3", fileName:"r3.cklb", hostName:HOST, hostIp:"", role:"", stigTitle:"STIG C", stigVersion:"1", releaseInfo:"", scanDate:"2026-07-22T09:07:45Z", vulns:[mkVuln("Open"), mkVuln("NotAFinding")]});
+
+  const day1Points = aesHistory(HOST);
+  check(day1Points.length === 1, \`a single-day, multi-STIG import produces exactly one history point (got \${day1Points.length})\`);
+  check(day1Points.length && formatDateISO(day1Points[0].date) === "2026-07-22", "that one point is dated the calendar day of the scans, not fractured across their exact timestamps");
+
+  // Day 2: two of those STIGs re-scanned the next day, again a few minutes
+  // apart — must add exactly one MORE point (real day-over-day history must
+  // still work), not merge into day 1 and not add two more.
+  assets.push({id:"r4", fileName:"r4.cklb", hostName:HOST, hostIp:"", role:"", stigTitle:"STIG A", stigVersion:"1", releaseInfo:"", scanDate:"2026-07-23T09:00:00Z", vulns:[mkVuln("NotAFinding"), mkVuln("NotAFinding")]});
+  assets.push({id:"r5", fileName:"r5.cklb", hostName:HOST, hostIp:"", role:"", stigTitle:"STIG B", stigVersion:"1", releaseInfo:"", scanDate:"2026-07-23T09:05:30Z", vulns:[mkVuln("NotAFinding"), mkVuln("NotAFinding")]});
+
+  const day2Points = aesHistory(HOST);
+  check(day2Points.length === 2, \`a genuine second scan day adds exactly one more point (got \${day2Points.length})\`);
+  check(day2Points.length === 2 && formatDateISO(day2Points[1].date) === "2026-07-23", "the second point is dated the second calendar day");
+  check(day2Points.length === 2 && day2Points[1].aes < day2Points[0].aes, "compliance improving on day 2 (more NotAFinding) is reflected as a lower AES");
+
+  // Fleet-wide cesHistory() must show the same day-granularity behavior —
+  // no more history points than there are distinct calendar days across
+  // every asset now loaded (real sample data + the synthetic host above).
+  const distinctDays = new Set(assets.map(a => a.scanDate && parseScanDate(a.scanDate)).filter(Boolean).map(d => formatDateISO(d)));
+  const cesPoints = cesHistory();
+  check(cesPoints.length === distinctDays.size,
+    \`cesHistory() has exactly one point per distinct calendar day across all assets (\${cesPoints.length} points, \${distinctDays.size} distinct days)\`);
 }
 
 console.log(\`\\n\${passes} passed, \${failures} failed.\`);
