@@ -180,6 +180,14 @@
   .blade-close:hover{color:var(--text);}
   .blade-meta{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:6px;}
   .blade-meta b{color:var(--text);font-weight:600;}
+  /* Everywhere else, blade-meta is followed by a block (compliance-split-row,
+     etc.) that already carries margin-top:16px, so it never needs its own
+     margin-bottom. The Compliance blade goes straight from blade-meta to the
+     family-grid panel, and the Findings/Assets blades go straight to the
+     search-box row, with nothing in between — those gaps have to be added
+     explicitly here or the block sits flush against the summary line. */
+  .blade-meta + .controls{margin-top:16px;}
+  .blade-meta + .compliance-block{margin-top:16px;}
   .blade-body{padding:14px 18px 22px;}
 
   /* ===== Dashboard tabs ===== */
@@ -290,6 +298,32 @@
   .meter .seg.open{background:var(--open);} .meter .seg.naf{background:var(--naf);}
   .meter .seg.nr{background:var(--nr);} .meter .seg.na{background:var(--na-dim);}
   .cat-pct{font-family:var(--mono);font-size:11px;width:44px;text-align:right;flex:none;color:var(--muted);}
+  /* Compliance blade — status meter rendered inside a table cell, so it
+     needs a fixed min-width instead of the flex:1 the panel version uses. */
+  .meter-inline{height:10px;min-width:120px;}
+  .fam-code-wrap{display:inline-flex;flex-direction:column;vertical-align:middle;}
+  .fam-code-wrap.indent{margin-left:20px;}
+  .fam-code{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--text);}
+  .fam-name{font-size:11px;color:var(--muted);margin-top:2px;}
+  .fam-unmapped .fam-code{color:var(--dim);}
+  .fam-caret{display:inline-block;width:14px;font-size:9px;color:var(--dim);vertical-align:middle;}
+  .compliance-fam-row[data-action]{cursor:pointer;}
+  .compliance-sub-row{background:var(--panel-raised);}
+  .compliance-sub-row:hover{background:var(--panel);}
+  /* Compliance blade — one stat panel per RMF family, 10 per row. */
+  .fam-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:8px;}
+  .fam-panel{position:relative;min-height:64px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:filter .12s;}
+  .fam-panel:hover{filter:brightness(1.15);}
+  .fam-panel-code{position:absolute;top:6px;left:8px;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.03em;opacity:.9;}
+  .fam-panel-pct{font-family:var(--mono);font-size:19px;font-weight:700;}
+  .fam-panel-na{background:var(--void);border:1px dashed var(--hairline-bright);cursor:default;}
+  .fam-panel-na:hover{filter:none;}
+  .fam-panel-na .fam-panel-code{color:var(--dim);opacity:1;}
+  .fam-panel-na .fam-panel-pct{font-size:13px;color:var(--dim);}
+  .fam-grid-legend{display:flex;align-items:center;gap:8px;margin-top:10px;font-family:var(--mono);font-size:10px;color:var(--dim);}
+  .fam-grid-legend .swatch{width:70px;height:8px;border-radius:4px;background:linear-gradient(90deg,#e5484d,#f0a93b,#35c77e);}
+  .fam-grid-legend .swatch-na{width:14px;height:8px;border-radius:2px;background:var(--void);border:1px dashed var(--hairline-bright);}
+  @media (max-width:1050px){ .fam-grid{grid-template-columns:repeat(5,1fr);} }
   .legend{display:flex;gap:14px;margin-top:8px;padding-top:8px;border-top:1px solid var(--hairline);flex-wrap:wrap;}
   .legend span{font-family:var(--mono);font-size:10px;color:var(--muted);display:flex;align-items:center;gap:5px;}
   .legend i{width:8px;height:8px;border-radius:2px;display:inline-block;}
@@ -547,6 +581,7 @@
       <div class="rail-item" data-menu="assets"><span class="glyph">&#9635;</span><span class="label-text">Assets</span><span class="rail-count" id="railCountAssets"></span></div>
       <div class="rail-item" data-menu="stigs"><span class="glyph">&#9636;</span><span class="label-text">STIGs</span><span class="rail-count" id="railCountStigs"></span></div>
       <div class="rail-item" data-menu="findings"><span class="glyph">&#9673;</span><span class="label-text">Findings</span><span class="rail-count" id="railCountFindings"></span></div>
+      <div class="rail-item" data-menu="compliance"><span class="glyph">&#9707;</span><span class="label-text">Compliance</span><span class="rail-count" id="railCountCompliance"></span></div>
       <div class="rail-item" data-menu="import"><span class="glyph">+</span><span class="label-text">Import</span></div>
     </div>
     <div class="rail-item rail-version" data-menu="changelog"><span class="glyph">ⓘ</span><span class="label-text" id="railVersionLabel">v2026.1.01</span></div>
@@ -563,7 +598,7 @@
   const STATUS_LABEL = {Open:"Open", Not_Reviewed:"Not Reviewed", NotAFinding:"Not a Finding", Not_Applicable:"Not Applicable"};
   const SEV_LABEL = {high:"CAT I", medium:"CAT II", low:"CAT III"};
   const SEV_CLASS = {high:"c1", medium:"c2", low:"c3"};
-  const MENU_TITLE = {dashboard:"Dashboard", assets:"Assets", stigs:"STIGs", findings:"Findings", import:"Import", changelog:"Change Log"};
+  const MENU_TITLE = {dashboard:"Dashboard", assets:"Assets", stigs:"STIGs", findings:"Findings", compliance:"Compliance", import:"Import", changelog:"Change Log"};
 
   // CCI -> RMF control number lookup, generated from a DISA CCI list export.
   // A handful of CCI ids in that source list carry a trailing " deprecated"
@@ -1450,6 +1485,63 @@
     return controlsForCciField(cciField).join(", ");
   }
 
+  // NIST SP 800-53 control families. The first block is Rev 5's twenty
+  // security families; the second is the Rev 4 Appendix J privacy families,
+  // which still appear in the CCI list and therefore still turn up in older
+  // benchmarks. A control number's family is just its alphabetic prefix
+  // ("AC-2(1)" -> "AC"), so anything not listed here still groups correctly,
+  // it just shows its bare code as the name.
+  const RMF_FAMILY_NAMES = {
+    AC:"Access Control", AT:"Awareness and Training", AU:"Audit and Accountability",
+    CA:"Assessment, Authorization, and Monitoring", CM:"Configuration Management",
+    CP:"Contingency Planning", IA:"Identification and Authentication",
+    IR:"Incident Response", MA:"Maintenance", MP:"Media Protection",
+    PE:"Physical and Environmental Protection", PL:"Planning",
+    PM:"Program Management", PS:"Personnel Security",
+    PT:"PII Processing and Transparency", RA:"Risk Assessment",
+    SA:"System and Services Acquisition", SC:"System and Communications Protection",
+    SI:"System and Information Integrity", SR:"Supply Chain Risk Management",
+    // Rev 4 Appendix J (privacy)
+    AP:"Authority and Purpose", AR:"Accountability, Audit, and Risk Management",
+    DI:"Data Quality and Integrity", DM:"Data Minimization and Retention",
+    IP:"Individual Participation and Redress", SE:"Security",
+    TR:"Transparency", UL:"Use Limitation"
+  };
+  function controlFamilyOf(control){
+    const m = /^([A-Z]{2})-/.exec(control||"");
+    return m ? m[1] : "";
+  }
+  function familyName(fam){
+    return RMF_FAMILY_NAMES[fam] || fam;
+  }
+
+  // The 20 official Rev 5 security control families, in NIST's own order —
+  // used to render one stat panel per family on the Compliance blade even
+  // when a family has zero findings mapped to it (shown as "no data" rather
+  // than just omitted, so the grid always reads as "all 20, not just the
+  // ones we happened to see").
+  const RMF_FAMILY_ORDER = ["AC","AT","AU","CA","CM","CP","IA","IR","MA","MP","PE","PL","PM","PS","PT","RA","SA","SC","SI","SR"];
+
+  // Red (0%) -> amber (50%) -> green (100%), the same three hues already
+  // used for Open/Not-Reviewed/Not-a-Finding elsewhere in the app, so the
+  // family panels read using the same color vocabulary as the rest of the
+  // dashboard instead of an unrelated palette.
+  const COMPLIANCE_GRADIENT_STOPS = [[0xe5,0x48,0x4d],[0xf0,0xa9,0x3b],[0x35,0xc7,0x7e]];
+  function compliancePctColor(pct){
+    const t = Math.max(0, Math.min(100, pct)) / 100;
+    const seg = t <= 0.5 ? 0 : 1;
+    const localT = t <= 0.5 ? t / 0.5 : (t - 0.5) / 0.5;
+    const a = COMPLIANCE_GRADIENT_STOPS[seg], b = COMPLIANCE_GRADIENT_STOPS[seg+1];
+    const mix = i => Math.round(a[i] + (b[i]-a[i]) * localT);
+    return [mix(0), mix(1), mix(2)];
+  }
+  // Perceptual luminance decides whether a panel needs dark or light text —
+  // the amber midpoint of the gradient is too bright for white text.
+  function readableTextOn([r,g,b]){
+    const luminance = 0.299*r + 0.587*g + 0.114*b;
+    return luminance > 150 ? "#1a1005" : "#ffffff";
+  }
+
   const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
   function formatDate(d){
     return `${MONTH_NAMES[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
@@ -1490,10 +1582,91 @@
   const CHANGELOG = [
     {version:"2026.1", date:"July 22, 2026", notes:["Initial release"]},
     {version:"2026.1.01", date:"July 25, 2026", features:["Added CKL/CKLB file import indicator", "Added Vuln ID column to Findings tables", "Widened Findings blade for readability", "Added Last Scanned column to Assets table", "Asset Detail now shows last scanned date", "Added History column (checklist count) to Assets table", "Added AES Over Time chart to Asset Detail", "Tightened Asset Detail layout for space efficiency", "Added CES Over Time chart to top of Dashboard", "Combined compliance bars and tiles on Findings dashboard", "Made STIG ID column optional; reordered Findings columns", "Vuln ID column now hidden by default but still searchable", "Combined compliance bars and tiles on Findings blade", "Added Group/Ungroup button to Findings blade", "Renamed Source column to Host on Findings blade", "Added Affected Assets list to finding detail (grouped view)"], fixes:["Removed dead filter-chip code", "Cut redundant ACR recalculation on asset views", "Change log now lists newest release first", "Re-scanned STIGs no longer double-count in totals", "AES no longer saturates and ignores compliance changes", "AES vs Finding Count now counts only open/not-reviewed findings", "Escaped finding row IDs to block HTML injection", "Neutralized spreadsheet formula injection in CSV exports", "Unreadable files no longer stall the import loader", "Import errors now report once, not per file", "Restored blinking caret on awaiting-file prompt", "Sped up rendering for large asset fleets"]},
-    {version:"2026.1.02", date:"July 27, 2026", features:["Added Control Number column to Findings tables"], fixes:["Trend chart dates angle instead of overlapping", "Changelog dates no longer drift with page load", "AES/CES history no longer splits one day into many", "Findings search is clearer, now finds Control Number"]}
+    {version:"2026.1.02", date:"July 27, 2026", features:["Added Control Number column to Findings tables", "Added Compliance blade summarizing RMF control families", "Compliance blade rows expand in place to show controls", "Compliance families shown as colored stat-panel grid"], fixes:["Trend chart dates angle instead of overlapping", "Changelog dates no longer drift with page load", "AES/CES history no longer splits one day into many", "Findings search is clearer, now finds Control Number", "% Compliant no longer counts Not Applicable rules", "Removed duplicate status tiles from Compliance blade", "Compliance summary no longer touches the panel below", "Large imports use far less memory", "Faster CKL import; attributes read in one pass", "Files import in batches, keeping the page responsive", "Findings and Compliance blades render much faster", "Hostile checklist attribute names can't pollute parsing"]}
   ];
 
   let assets = []; // {id, fileName, hostName, hostIp, stigTitle, stigVersion, releaseInfo, vulns:[...]}
+
+  // Bumped on every mutation of `assets`. Derived views (see memoOnAssets)
+  // key their caches off this, so a cache can never outlive the data it was
+  // computed from — importing, removing, or clearing assets invalidates
+  // everything downstream automatically instead of each call site having to
+  // remember to clear a specific cache.
+  // Declared here, above bumpAssetsVersion(), because that function reads
+  // them — a `const` further down the file would still be in its temporal
+  // dead zone if anything ever bumped the version during script setup.
+  // intern() itself is defined next to the other parse helpers below.
+  const INTERN_MAX = 250000; // safety valve; far above a realistic distinct-string count
+  const _internTable = new Map();
+
+  let assetsVersion = 0;
+  function bumpAssetsVersion(){
+    assetsVersion++;
+    // The interning table only exists to collapse duplicate strings across a
+    // fleet; once assets change it would otherwise pin text for rules that
+    // are no longer loaded. It is rebuilt naturally on the next import.
+    if(_internTable.size > INTERN_MAX) _internTable.clear();
+  }
+
+  // ---- The only supported ways to mutate `assets` ----------------------
+  // Every derived view below is memoized against assetsVersion, so a write
+  // that skipped the bump would leave the Findings and Compliance blades
+  // silently showing pre-import data — a failure with no visible symptom.
+  // Routing all writes through these two helpers makes that impossible to
+  // get wrong, and a regression test asserts no raw `assets.push` /
+  // `assets =` survives anywhere else in this file.
+  function addAssets(list){
+    for(let i = 0; i < list.length; i++) assets.push(list[i]);
+    bumpAssetsVersion();
+    return assets.length;
+  }
+  function setAssets(list){
+    assets = list;
+    bumpAssetsVersion();
+    return assets.length;
+  }
+
+  // ACR overrides are user-editable independently of the imported data, and
+  // some derived views (anything carrying criticality or ACR bands) depend on
+  // both. Tracked separately so editing an ACR doesn't needlessly throw away
+  // caches that only depend on the findings themselves.
+  let acrVersion = 0;
+  function bumpAcrVersion(){ acrVersion++; }
+
+  // Wraps a zero-argument derived-view function so it recomputes only when
+  // its inputs have actually changed. These functions each rebuild tens of
+  // thousands of objects, and are called several times per render (and once
+  // per keystroke in a search box), so without this the Compliance and
+  // Findings blades redo the same full scan repeatedly.
+  //
+  // `versionOf` returns the current input version; the cache is dropped as
+  // soon as it differs from the one the cached value was built under.
+  function memoOnVersion(versionOf, fn){
+    let cachedVersion = null, cachedValue;
+    return function(){
+      const v = versionOf();
+      if(cachedVersion !== v){
+        cachedValue = fn();
+        cachedVersion = v;
+      }
+      return cachedValue;
+    };
+  }
+  const assetsOnly = ()=> assetsVersion;
+  const assetsAndAcr = ()=> assetsVersion + ":" + acrVersion;
+  function memoOnAssets(fn){ return memoOnVersion(assetsOnly, fn); }
+  // Same idea, but for a function taking one string key.
+  function memoOnAssetsBy(fn){
+    let cachedVersion = -1, cache = new Map();
+    return function(key){
+      if(cachedVersion !== assetsVersion){ cache = new Map(); cachedVersion = assetsVersion; }
+      if(cache.has(key)) return cache.get(key);
+      const val = fn(key);
+      cache.set(key, val);
+      return val;
+    };
+  }
+
   let bladeStack = [];
   let bladeSeq = 0;
   let lastDashboardRows = []; // most recently computed dashboard asset rows, for scatter chart resize redraws
@@ -1535,21 +1708,63 @@
     return (s||"").toString().replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
 
-  function attr(vulnEl, name){
+  // Collects every <STIG_DATA><VULN_ATTRIBUTE>/<ATTRIBUTE_DATA> pair under one
+  // <VULN> into a plain lookup in a single pass.
+  //
+  // parseCKL needs ten different attributes per rule. Reading them with ten
+  // separate scans meant ten querySelectorAll allocations and ten linear
+  // walks over the same ~25 STIG_DATA nodes for every rule in the file —
+  // O(fields x nodes) per rule, the dominant cost of a large .ckl import.
+  // One pass builds the map, then each field is an O(1) read.
+  //
+  // Null-prototype so a checklist containing a VULN_ATTRIBUTE literally named
+  // "__proto__" or "constructor" can't shadow an inherited Object member and
+  // hand back a function where a string is expected.
+  function vulnAttrMap(vulnEl){
+    const map = Object.create(null);
     const nodes = vulnEl.querySelectorAll("STIG_DATA");
     for(const n of nodes){
       const key = n.querySelector("VULN_ATTRIBUTE");
-      if(key && key.textContent.trim() === name){
-        const val = n.querySelector("ATTRIBUTE_DATA");
-        return val ? val.textContent.trim() : "";
-      }
+      if(!key) continue;
+      const k = key.textContent.trim();
+      if(k === "" || k in map) continue; // first occurrence wins, matching the old scan
+      const val = n.querySelector("ATTRIBUTE_DATA");
+      map[k] = val ? val.textContent.trim() : "";
     }
-    return "";
+    return map;
+  }
+  // Kept as a standalone helper (same signature and semantics as before) for
+  // any single-attribute caller; the hot per-rule path uses vulnAttrMap.
+  function attr(vulnEl, name){
+    const map = vulnAttrMap(vulnEl);
+    return Object.prototype.hasOwnProperty.call(map, name) ? map[name] : "";
   }
 
   function textOf(root, tag){
     const el = root.querySelector(tag);
     return el ? el.textContent.trim() : "";
+  }
+
+  // ---- String interning -------------------------------------------------
+  // A STIG rule's discussion / check text / fix text is identical on every
+  // host the STIG is applied to, but JSON.parse and the XML DOM hand back a
+  // brand-new string for each occurrence. On a real fleet import that is the
+  // single largest memory cost: measured over 80 checklists (37,887 rules)
+  // those four text fields alone retained ~120 MB, of which ~80% was exact
+  // duplicates. Interning collapses them to one shared instance each,
+  // cutting retained strings to roughly a fifth and — because the parse then
+  // allocates far less — measurably shortening import time via reduced GC
+  // pressure.
+  //
+  // Only worth doing for fields that actually repeat across hosts. Per-rule
+  // unique values (ids, finding details) are passed through untouched: they
+  // would just bloat the table without ever getting a hit.
+  function intern(s){
+    if(typeof s !== "string" || s.length === 0) return s;
+    const hit = _internTable.get(s);
+    if(hit !== undefined) return hit;
+    if(_internTable.size < INTERN_MAX) _internTable.set(s, s);
+    return s;
   }
 
   function normalizeStatus(raw){
@@ -1632,18 +1847,21 @@
       const vulnEls = iStig.querySelectorAll("VULN");
       const vulns = [];
       vulnEls.forEach((v, idx)=>{
+        // One pass over this rule's STIG_DATA nodes, then O(1) field reads —
+        // see vulnAttrMap. `a[...] || ""` covers attributes the file omits.
+        const a = vulnAttrMap(v);
         vulns.push({
           id: filename + "-" + sIdx + "-" + idx,
-          vulnNum: attr(v,"Vuln_Num"),
-          ruleId: attr(v,"Rule_ID"),
-          ruleVer: attr(v,"Rule_Ver"),
-          ruleTitle: attr(v,"Rule_Title") || "(untitled rule)",
-          severity: normalizeSeverity(attr(v,"Severity")),
-          groupTitle: attr(v,"Group_Title"),
-          discussion: attr(v,"Vuln_Discuss"),
-          checkContent: attr(v,"Check_Content"),
-          fixText: attr(v,"Fix_Text"),
-          cci: attr(v,"CCI_REF"),
+          vulnNum: intern(a["Vuln_Num"] || ""),
+          ruleId: intern(a["Rule_ID"] || ""),
+          ruleVer: intern(a["Rule_Ver"] || ""),
+          ruleTitle: intern(a["Rule_Title"] || "(untitled rule)"),
+          severity: normalizeSeverity(a["Severity"]),
+          groupTitle: intern(a["Group_Title"] || ""),
+          discussion: intern(a["Vuln_Discuss"] || ""),
+          checkContent: intern(a["Check_Content"] || ""),
+          fixText: intern(a["Fix_Text"] || ""),
+          cci: intern(a["CCI_REF"] || ""),
           status: normalizeStatus(textOf(v,"STATUS")),
           findingDetails: textOf(v,"FINDING_DETAILS"),
           comments: textOf(v,"COMMENTS")
@@ -1690,18 +1908,22 @@
         const check = r.check_content;
         const fix = r.fix_text;
         const ccis = Array.isArray(r.ccis) ? r.ccis.join(", ") : (r.cci || "");
+        // The rule text below is byte-identical on every host this STIG is
+        // applied to, so it is interned rather than retained once per host —
+        // see intern(). findingDetails/comments are genuinely per-host and
+        // are left alone.
         return {
           id: filename + "_" + sIdx + "-" + idx,
-          vulnNum: r.group_id || r.rule_id || "",
-          ruleId: r.rule_id || "",
-          ruleVer: r.rule_version || r.rule_id || "",
-          ruleTitle: r.rule_title || r.group_title || "(untitled rule)",
+          vulnNum: intern(r.group_id || r.rule_id || ""),
+          ruleId: intern(r.rule_id || ""),
+          ruleVer: intern(r.rule_version || r.rule_id || ""),
+          ruleTitle: intern(r.rule_title || r.group_title || "(untitled rule)"),
           severity: normalizeSeverity(r.severity),
-          groupTitle: r.group_title || r.group_id || "",
-          discussion: r.discussion || r.vuln_discuss || "",
-          checkContent: typeof check === "object" && check ? (check.content||"") : (check||""),
-          fixText: typeof fix === "object" && fix ? (fix.text||"") : (fix||""),
-          cci: ccis,
+          groupTitle: intern(r.group_title || r.group_id || ""),
+          discussion: intern(r.discussion || r.vuln_discuss || ""),
+          checkContent: intern(typeof check === "object" && check ? (check.content||"") : (check||"")),
+          fixText: intern(typeof fix === "object" && fix ? (fix.text||"") : (fix||"")),
+          cci: intern(ccis),
           status: normalizeStatus(r.status),
           findingDetails: r.finding_details || "",
           comments: r.comments || ""
@@ -1752,7 +1974,21 @@
       }
     };
 
-    files.forEach(f=>{
+    // Files are read a few at a time rather than all at once. Kicking off one
+    // FileReader per file meant every checklist's full text was resident
+    // simultaneously — dropping 80 files held ~100 MB of source strings live
+    // on top of the parsed objects being built from them, which pushed the
+    // tab into heavy GC (and, on smaller machines, out of memory) exactly
+    // when it was busiest. A bounded window keeps peak usage proportional to
+    // READ_CONCURRENCY instead of to the number of files dropped.
+    //
+    // It also fixes a UI problem: each parse is synchronous and blocking, so
+    // back-to-back parses starved the event loop and the progress indicator
+    // never actually painted. Yielding between files lets it update.
+    const READ_CONCURRENCY = 4;
+    let nextIndex = 0;
+
+    const readOne = f => new Promise(resolve=>{
       const reader = new FileReader();
       reader.onload = e=>{
         try{
@@ -1761,25 +1997,48 @@
           if(!newAssets.length){
             problems.push(`${f.name} — parsed but contained no STIGs/rules`);
           }
-          newAssets.forEach(a => assets.push(a));
+          addAssets(newAssets);
         }catch(err){
           console.error("Failed to parse", f.name, err);
           problems.push(`${f.name} — not a valid CKL/CKLB file`);
         }
-        finishOne();
+        resolve();
       };
       reader.onerror = ()=>{
         console.error("Failed to read", f.name, reader.error);
         problems.push(`${f.name} — could not be read from disk`);
-        finishOne();
+        resolve();
       };
       reader.readAsText(f);
     });
+
+    // One worker pulls the next unread file until the list is exhausted.
+    //
+    // finishOne() is guarded: it runs the end-of-import work (rebuilding
+    // blades, showing the problem summary), and if that threw, an unguarded
+    // worker loop would abandon every file it had not yet picked up and the
+    // loading indicator would never clear. A failure there must not stop the
+    // remaining files from loading.
+    const worker = async ()=>{
+      while(nextIndex < files.length){
+        const f = files[nextIndex++];
+        await readOne(f);
+        try{ finishOne(); }
+        catch(err){ console.error("Post-import refresh failed", err); }
+        // Hand the main thread back so the loader can repaint between files.
+        await new Promise(r => setTimeout(r, 0));
+      }
+    };
+    for(let i = 0; i < Math.min(READ_CONCURRENCY, files.length); i++){
+      // Each worker is self-contained; catch here too so a worker can never
+      // surface as an unhandled promise rejection.
+      worker().catch(err => console.error("File import worker failed", err));
+    }
   }
 
   function removeAsset(id){
     closeColMenu(); closeColFilterMenu(); hideTooltip();
-    assets = assets.filter(a => a.id !== id);
+    setAssets(assets.filter(a => a.id !== id));
     const blade = newBlade("import", "Import", {});
     blade.__menu = "import";
     bladeStack = [blade];
@@ -2019,6 +2278,7 @@
         continue;
       }
       acrOverrides.set(host.hostKey, acrNum);
+      bumpAcrVersion();
       applied++;
     }
     return {applied, notFound, invalid};
@@ -2335,6 +2595,28 @@
   // Stats helpers
   // ==================================================================
 
+  // Fraction of APPLICABLE rules (Open + Not Reviewed + Not a Finding) that
+  // are resolved (Not a Finding), as a rounded percentage. Not Applicable is
+  // excluded from BOTH sides of the ratio — it isn't evidence of security
+  // posture either way, just a check that doesn't apply to this
+  // configuration. Folding it into the numerator would inflate compliance
+  // for reasons unrelated to hardening; folding it into the denominator
+  // (the old behavior) would dilute the score for STIGs that happen to
+  // carry many inapplicable checks. If nothing is applicable, there's
+  // nothing to fail, so this reads 100 — same "nothing to report" default
+  // every caller already used.
+  //
+  // Shared by every "% Compliant" figure in the app: the CAT I/II/III bars
+  // and the Compliance by Category panel (catRowHtml/complianceBarsHtml),
+  // the Assets and STIGs tables (buildAssetRow/buildStigGroups), and the
+  // Compliance blade's family/control rows (finishTally) — one formula, so
+  // the same finding set can never show two different percentages depending
+  // on which screen you're looking at it from.
+  function compliancePct(open, nr, naf){
+    const applicable = open + nr + naf;
+    return applicable ? Math.round((naf / applicable) * 100) : 100;
+  }
+
   function computeStats(vulns){
     const stats = {Open:0, Not_Reviewed:0, NotAFinding:0, Not_Applicable:0};
     const bySev = {high:{Open:0,Not_Reviewed:0,NotAFinding:0,Not_Applicable:0,total:0},
@@ -2352,7 +2634,7 @@
   function catRowHtml(bySev, sevKey, label, cls){
     const d = bySev[sevKey] || {Open:0,Not_Reviewed:0,NotAFinding:0,Not_Applicable:0,total:0};
     const t = d.total || 1;
-    const pctClosed = d.total ? Math.round(((d.NotAFinding + d.Not_Applicable) / d.total) * 100) : 100;
+    const pctClosed = d.total ? compliancePct(d.Open, d.Not_Reviewed, d.NotAFinding) : 100;
     return `<div class="cat-row">
       <div class="cat-tag ${cls}">${label}</div>
       <div class="meter">
@@ -2377,7 +2659,7 @@
 
   function complianceBarsHtml(vulns){
     const {bySev, stats} = computeStats(vulns);
-    const overallClosed = vulns.length ? Math.round(((stats.NotAFinding+stats.Not_Applicable)/vulns.length)*100) : 100;
+    const overallClosed = compliancePct(stats.Open, stats.Not_Reviewed, stats.NotAFinding);
     return `
       <div class="compliance-block">
         <div class="head"><h3>Compliance by Category</h3><span class="overall">${overallClosed}% closed overall · ${vulns.length} rules</span></div>
@@ -2865,6 +3147,17 @@
     if(state.colFilters.source.size) v = v.filter(x=>state.colFilters.source.has(x._sourceLabel));
     if(state.colFilters.stig && state.colFilters.stig.size) v = v.filter(x=>state.colFilters.stig.has(x._stigLabel));
     if(state.colFilters.acr && state.colFilters.acr.size) v = v.filter(x=>state.colFilters.acr.has(x._acrBand));
+    // Control-number filter, set by drilling in from the Compliance blade. A
+    // finding matches if ANY control it maps to is selected, since one
+    // finding can cite several. UNMAPPED_CONTROL selects findings whose CCIs
+    // resolve to no known control.
+    if(state.colFilters.control && state.colFilters.control.size){
+      v = v.filter(x=>{
+        const cs = controlsForCciField(x.cci);
+        if(!cs.length) return state.colFilters.control.has(UNMAPPED_CONTROL);
+        return cs.some(c=>state.colFilters.control.has(c));
+      });
+    }
     if(state.search){
       const t = state.search.toLowerCase();
       v = v.filter(x =>
@@ -3147,6 +3440,7 @@
     if(type === "assets") sortKey = "name";
     else if(type === "stigs") sortKey = "title";
     else if(type === "import") sortKey = "file";
+    else if(type === "compliance") sortKey = "family";
     const state = {
       search: "",
       sortKey, sortDir: 1,
@@ -3160,13 +3454,15 @@
         aes: params.presetAES ? new Set([params.presetAES]) : new Set(),
         os: params.presetOS ? new Set([params.presetOS]) : new Set(),
         openState: new Set(), // STIGs blade: Has Open / Fully Closed, filtered via the Open column header
-        version: new Set() // STIGs blade: filtered via the Version column header
+        version: new Set(), // STIGs blade: filtered via the Version column header
+        control: params.presetControl ? new Set([params.presetControl]) : new Set() // set when drilling in from the Compliance blade
       },
       activeVulnId: null,
       page: 1,
       pageSize: 20, // findings tables only — "all" shows every matching row
       dashboardTab: "assets",
-      grouped: false // Findings blade only — groups rows by rule title + status
+      grouped: false, // Findings blade only — groups rows by rule title + status
+      expandedFamilies: new Set() // Compliance blade only — which family rows are expanded in-place
     };
     return {id:"blade"+bladeSeq, type, title, params, state};
   }
@@ -3175,7 +3471,7 @@
     if(type === "import") return "blade-w-auto";
     if(type === "findingDetail" || type === "changelog" || type === "changelogDetail") return "blade-w-md";
     if(type === "findings") return "blade-w-xl"; // extra room for the Rule Title column with more columns visible
-    return "blade-w-lg"; // dashboard, assets, assetDetail, stigs, stigDetail
+    return "blade-w-lg"; // dashboard, assets, assetDetail, stigs, stigDetail, compliance
   }
 
   // Collapses the raw `assets` list (one entry per imported STIG-per-file) to
@@ -3254,7 +3550,7 @@
       else if(v.status==="NotAFinding") naf++;
       else na++;
     }));
-    const compliance = total ? Math.round(((naf+na)/total)*100) : 100;
+    const compliance = compliancePct(open, nr, naf);
     const acrInfo = getACR(host.hostKey, host);
     const aesInfo = computeAES(host, acrInfo.value);
     const scanInfo = lastScannedInfo(host);
@@ -3340,7 +3636,7 @@
       g.na += stats.Not_Applicable;
     });
     return Array.from(map.values()).map(g=>{
-      const compliance = g.total ? Math.round(((g.naf+g.na)/g.total)*100) : 100;
+      const compliance = compliancePct(g.open, g.nr, g.naf);
       return Object.assign(g, {hostCount: g.hostNames.size, compliance});
     });
   }
@@ -3351,6 +3647,155 @@
     if(x.open > 0) return "hasOpen";
     if(x.nr > 0) return "reviewPending";
     return "fullyClosed";
+  }
+
+  // ==================================================================
+  // RMF control-family compliance — the Compliance blade
+  //
+  // Every finding carries CCI references, and each CCI maps to one or more
+  // NIST 800-53 control numbers (see CCI_CONTROL_MAP). Rolling findings up
+  // by control, and controls up by family, answers "which control families
+  // is this fleet actually failing?" — a different question from the
+  // CAT I/II/III severity breakdown shown elsewhere.
+  //
+  // IMPORTANT — counts intentionally overlap: a single finding can cite
+  // several CCIs spanning several controls (and several families), so it is
+  // counted once under each control it maps to. Summing rule counts across
+  // families therefore exceeds the raw finding total; each row answers "how
+  // many findings touch this control/family", not "how do the findings
+  // partition". This is the correct reading for control-by-control
+  // assessment, but it must be surfaced in the UI so nobody tries to
+  // reconcile the column against the Findings total.
+  // ==================================================================
+
+  // Every finding paired with each control it maps to, flattened once and
+  // reused by both compliance levels. Findings whose CCIs resolve to no
+  // known control are grouped under UNMAPPED_CONTROL so the view never
+  // silently drops rules.
+  const UNMAPPED_CONTROL = "(unmapped)";
+  // Memoized on the assets version: this materializes one object per finding
+  // (tens of thousands on a real fleet) and is read by every compliance view,
+  // several times per render. Callers must treat the result as read-only —
+  // they all currently do, and the regression suite asserts the identity is
+  // shared so an accidental in-place mutation shows up as a failure.
+  const allFindingsWithControls = memoOnAssets(function(){
+    const out = [];
+    latestAssets().forEach(a=>{
+      const hostKey = a.hostName || a.fileName;
+      const stigLabel = a.stigTitle || a.fileName;
+      a.vulns.forEach(v=>{
+        const controls = controlsForCciField(v.cci);
+        out.push({vuln:v, hostKey, stigLabel, controls: controls.length ? controls : [UNMAPPED_CONTROL]});
+      });
+    });
+    return out;
+  });
+
+  function blankTally(){
+    return {total:0, open:0, nr:0, naf:0, na:0, hosts:new Set()};
+  }
+  function addToTally(t, v, hostKey){
+    t.total++;
+    if(v.status === "Open") t.open++;
+    else if(v.status === "Not_Reviewed") t.nr++;
+    else if(v.status === "NotAFinding") t.naf++;
+    else t.na++;
+    if(hostKey) t.hosts.add(hostKey);
+  }
+  function finishTally(t, extra){
+    const compliance = compliancePct(t.open, t.nr, t.naf);
+    return Object.assign({}, extra, {
+      total:t.total, open:t.open, nr:t.nr, naf:t.naf, na:t.na,
+      hostCount:t.hosts.size, compliance
+    });
+  }
+
+  // One row per control family, e.g. AC / Access Control.
+  // Memoized on the assets version — the Compliance blade recomputes this on
+  // every refresh, and once per keystroke while searching.
+  const complianceFamilyRows = memoOnAssets(function(){
+    const byFam = new Map();
+    allFindingsWithControls().forEach(({vuln, hostKey, controls})=>{
+      // De-dupe per family: a finding citing both AC-2 and AC-3 touches the
+      // AC family once, not twice, or a single rule would inflate its own
+      // family's totals purely for citing several controls within it.
+      const fams = new Set(controls.map(c => c === UNMAPPED_CONTROL ? UNMAPPED_CONTROL : controlFamilyOf(c)));
+      fams.forEach(fam=>{
+        if(!byFam.has(fam)) byFam.set(fam, {tally:blankTally(), controls:new Set()});
+        addToTally(byFam.get(fam).tally, vuln, hostKey);
+      });
+      controls.forEach(c=>{
+        const fam = c === UNMAPPED_CONTROL ? UNMAPPED_CONTROL : controlFamilyOf(c);
+        if(byFam.has(fam)) byFam.get(fam).controls.add(c);
+      });
+    });
+    return Array.from(byFam.entries()).map(([fam, rec]) => finishTally(rec.tally, {
+      family: fam,
+      familyName: fam === UNMAPPED_CONTROL ? "Findings with no mapped control" : familyName(fam),
+      controlCount: rec.controls.size,
+      unmapped: fam === UNMAPPED_CONTROL
+    }));
+  });
+
+  // One row per individual control number within a family, e.g. AC-2, AC-2(1).
+  // Memoized per family: expanding a family previously re-scanned every
+  // finding in the fleet, so opening several families multiplied that scan.
+  const complianceControlRows = memoOnAssetsBy(function(family){
+    const byControl = new Map();
+    allFindingsWithControls().forEach(({vuln, hostKey, controls})=>{
+      controls.forEach(c=>{
+        const fam = c === UNMAPPED_CONTROL ? UNMAPPED_CONTROL : controlFamilyOf(c);
+        if(fam !== family) return;
+        if(!byControl.has(c)) byControl.set(c, blankTally());
+        addToTally(byControl.get(c), vuln, hostKey);
+      });
+    });
+    return Array.from(byControl.entries()).map(([control, tally]) => finishTally(tally, {
+      control,
+      unmapped: control === UNMAPPED_CONTROL
+    }));
+  });
+
+  function sortComplianceRows(rows, state, keyField){
+    const dir = state.sortDir;
+    rows.sort((a,b)=>{
+      switch(state.sortKey){
+        case "controls": return ((a.controlCount||0)-(b.controlCount||0))*dir;
+        case "hosts": return (a.hostCount-b.hostCount)*dir;
+        case "total": return (a.total-b.total)*dir;
+        case "open": return (a.open-b.open)*dir;
+        case "notReviewed": return (a.nr-b.nr)*dir;
+        case "compliance": return (a.compliance-b.compliance)*dir;
+        case "name": return familyName(a.family||"").localeCompare(familyName(b.family||""))*dir;
+        default:
+          // family code / control number — numeric-aware so AC-2 sorts
+          // before AC-10, and AC-2 before AC-2(1).
+          return String(a[keyField]||"").localeCompare(String(b[keyField]||""), undefined, {numeric:true})*dir;
+      }
+    });
+    return rows;
+  }
+
+  function filterComplianceRows(rows, state, keyField){
+    if(!state.search) return rows;
+    const t = state.search.toLowerCase();
+    return rows.filter(r =>
+      String(r[keyField]||"").toLowerCase().includes(t) ||
+      String(r.familyName||"").toLowerCase().includes(t) ||
+      (keyField === "control" ? familyName(controlFamilyOf(r.control)).toLowerCase().includes(t) : false)
+    );
+  }
+
+  // Horizontal open/not-reviewed/closed/N-A meter, same visual language as
+  // the Compliance by Category bars.
+  function complianceMeterHtml(r){
+    const t = r.total || 1;
+    return `<div class="meter meter-inline">
+      <div class="seg open" style="width:${r.open/t*100}%"></div>
+      <div class="seg nr" style="width:${r.nr/t*100}%"></div>
+      <div class="seg naf" style="width:${r.naf/t*100}%"></div>
+      <div class="seg na" style="width:${r.na/t*100}%"></div>
+    </div>`;
   }
 
   function filterStigRows(rows, state){
@@ -3540,6 +3985,136 @@
       ${findingsTableHtml(blade, filtered, true, sourceOptions)}`;
   }
 
+  // Shared header: search box + the overlap caveat, so the "Rules" column
+  // is never misread as a partition of the finding total.
+  const COMPLIANCE_OVERLAP_TIP = "A finding can cite several CCIs mapping to several controls, so it is counted under each control it touches. Rule counts therefore overlap between rows and can sum to more than the total number of findings.";
+  function complianceControlsHtml(bladeId, state, placeholder){
+    return `<div class="controls">
+      <input class="search-input" data-blade-id="${bladeId}" data-action="search" type="text" placeholder="${esc(placeholder)}" value="${esc(state.search)}">
+    </div>`;
+  }
+  function complianceLegendHtml(){
+    return `<div class="legend">
+      <span><i class="open"></i>Open</span><span><i class="nr"></i>Not Reviewed</span>
+      <span><i class="naf"></i>Not a Finding</span><span><i class="na"></i>Not Applicable</span>
+    </div>`;
+  }
+
+  // One stat panel per RMF family, in NIST's own order (10 per row x 2 rows
+  // = all 20). A family with zero mapped findings still gets a panel —
+  // shown as "no data" rather than omitted — so the grid always reads as
+  // "here are all 20 families", not just whichever ones happened to turn up.
+  // Panels reuse the same toggle-compliance-family action as clicking a
+  // family's row in the table below, so clicking a panel expands that
+  // family's controls in place.
+  function complianceFamilyGridHtml(bladeId, allRows){
+    const byCode = new Map(allRows.filter(r=>!r.unmapped).map(r=>[r.family, r]));
+    const panels = RMF_FAMILY_ORDER.map(code=>{
+      const r = byCode.get(code);
+      if(!r){
+        return `<div class="fam-panel fam-panel-na tooltip" data-tip="${esc(familyName(code))} — no findings map to this family">
+          <div class="fam-panel-code">${esc(code)}</div>
+          <div class="fam-panel-pct">N/A</div>
+        </div>`;
+      }
+      const rgb = compliancePctColor(r.compliance);
+      const bg = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+      const fg = readableTextOn(rgb);
+      const tip = `${r.familyName} — ${r.compliance}% compliant, ${r.total} rule${r.total===1?"":"s"} (click to expand)`;
+      return `<div class="fam-panel tooltip" data-tip="${esc(tip)}" style="background:${bg};color:${fg};" data-action="toggle-compliance-family" data-blade-id="${bladeId}" data-family="${esc(code)}">
+        <div class="fam-panel-code">${esc(code)}</div>
+        <div class="fam-panel-pct">${r.compliance}%</div>
+      </div>`;
+    });
+    return `<div class="fam-grid">${panels.join("")}</div>
+      <div class="fam-grid-legend"><span>0%</span><span class="swatch"></span><span>100%</span><span class="swatch-na"></span><span>no findings mapped to that family</span></div>`;
+  }
+
+  // One table, two row types sharing the same seven columns. A family row's
+  // "Controls" cell is how many distinct controls it has; a control sub-row
+  // (only rendered while its parent family is expanded) has nothing to put
+  // there, so it shows "—" and puts its own distinguishing count — assets
+  // affected — as a subtitle under the control code instead, mirroring how
+  // the family row subtitles its own name under the family code.
+  function renderCompliance(blade, bladeIndex){
+    if(!assets.length) return `<div class="empty-note">no STIG files loaded yet</div>`;
+    const allRows = complianceFamilyRows();
+    if(!allRows.length) return `<div class="empty-note">no findings could be mapped to RMF control families</div>`;
+    let rows = filterComplianceRows(allRows, blade.state, "family");
+    rows = sortComplianceRows(rows.slice(), blade.state, "family");
+    const expanded = blade.state.expandedFamilies;
+
+    // Fleet-wide roll-up across every finding, counted once each — this is
+    // the honest total, unlike the per-family rule counts which overlap.
+    const flat = allFindingsWithControls();
+    const overall = blankTally();
+    flat.forEach(({vuln, hostKey}) => addToTally(overall, vuln, hostKey));
+    const o = finishTally(overall, {});
+    const mappedFamilies = allRows.filter(r=>!r.unmapped);
+    const controlTotal = mappedFamilies.reduce((s,r)=>s+r.controlCount, 0);
+    const worst = mappedFamilies.slice().sort((a,b)=> a.compliance-b.compliance || b.open-a.open)[0];
+
+    const cols = [
+      ["family","Family"], ["controls","Controls"], ["total","Rules"],
+      ["open","Open"], ["notReviewed","Not Reviewed"], ["status","Status"], ["compliance","% Compliant"]
+    ];
+    const header = cols.map(([key,label])=>{
+      if(key === "status") return `<th>${esc(label)}</th>`; // meter column isn't meaningfully sortable on its own
+      return `<th data-blade-id="${blade.id}" data-action="sort" data-key="${key}">${esc(label)}${sortIcon(blade.state,key)}</th>`;
+    }).join("");
+
+    const bodyRows = rows.length===0
+      ? `<tr class="empty-row"><td colspan="${cols.length}">no control families match the current search</td></tr>`
+      : rows.map(r=>{
+          // The unmapped bucket is already atomic (it has no controls of its
+          // own to break out further), so it never expands.
+          const canExpand = !r.unmapped;
+          const isOpen = canExpand && expanded.has(r.family);
+          const famRow = `
+        <tr class="${r.unmapped?"fam-unmapped":""} compliance-fam-row"${canExpand ? ` data-action="toggle-compliance-family" data-blade-id="${blade.id}" data-family="${esc(r.family)}"` : ""}>
+          <td class="title">${canExpand ? `<span class="fam-caret ${isOpen?"open":""}">${isOpen?"▾":"▸"}</span>` : `<span class="fam-caret"></span>`}<span class="fam-code tooltip" data-tip="${esc(r.familyName)}">${esc(r.family)}</span></td>
+          <td>${r.controlCount}</td>
+          <td>${r.total}</td>
+          <td><span class="status-pill Open">${r.open}</span></td>
+          <td><span class="status-pill Not_Reviewed">${r.nr}</span></td>
+          <td>${complianceMeterHtml(r)}</td>
+          <td>${r.compliance}%</td>
+        </tr>`;
+          if(!isOpen) return famRow;
+          // .slice() because complianceControlRows is memoized and
+          // sortComplianceRows sorts in place — sorting the cached array
+          // directly would mutate shared state.
+          const ctrlRows = sortComplianceRows(complianceControlRows(r.family).slice(), {sortKey:"control", sortDir:1}, "control");
+          const subRows = ctrlRows.map(c=>`
+        <tr class="compliance-sub-row" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="${esc(c.control)} findings" data-preset-control="${esc(c.control)}">
+          <td class="title"><span class="fam-code-wrap indent"><span class="fam-code">${esc(c.control)}</span><span class="fam-name">${c.hostCount} asset${c.hostCount===1?"":"s"}</span></span></td>
+          <td>—</td>
+          <td>${c.total}</td>
+          <td><span class="status-pill Open">${c.open}</span></td>
+          <td><span class="status-pill Not_Reviewed">${c.nr}</span></td>
+          <td>${complianceMeterHtml(c)}</td>
+          <td>${c.compliance}%</td>
+        </tr>`).join("");
+          return famRow + subRows;
+        }).join("");
+
+    return `
+      <div class="blade-meta">
+        <span>Control families: <b>${mappedFamilies.length}</b></span>
+        <span>Controls covered: <b>${controlTotal}</b></span>
+        <span>Findings assessed: <b>${o.total}</b></span>
+        <span>Overall closed: <b>${o.compliance}%</b></span>
+        ${worst ? `<span>Weakest family: <b>${esc(worst.family)} (${worst.compliance}%)</b></span>` : ""}
+      </div>
+      <div class="compliance-block">
+        <div class="head"><h3>RMF Control Family Coverage</h3><span class="overall tooltip" data-tip="${esc(COMPLIANCE_OVERLAP_TIP)}">how are these counted?</span></div>
+        ${complianceFamilyGridHtml(blade.id, allRows)}
+      </div>
+      ${complianceControlsHtml(blade.id, blade.state, "Search family code or name...")}
+      <div class="tablewrap"><table><thead><tr>${header}</tr></thead><tbody>${bodyRows}</tbody></table></div>
+      <div class="count-note">showing ${rows.length} of ${allRows.length} control families — click a family to expand its controls, or a control to see its findings</div>`;
+  }
+
   function renderStigsList(blade, bladeIndex){
     if(!assets.length) return `<div class="empty-note">no STIG files loaded yet</div>`;
     const allGroups = buildStigGroups();
@@ -3609,7 +4184,17 @@
       ${findingsTableHtml(blade, filtered, true, sourceOptions, "Assets")}`;
   }
 
-  function renderFindingsList(blade, bladeIndex){
+  // Every finding in the fleet, decorated with the host/STIG labels and the
+  // ACR-derived criticality the Findings blade sorts, filters and groups on.
+  //
+  // Memoized on assets + ACR. This clones one object per finding (tens of
+  // thousands of them), and renderFindingsList runs on every sort click,
+  // filter change and search keystroke — rebuilding the whole decorated set
+  // each time was by a wide margin the most expensive thing the blade did.
+  // Both inputs are versioned, so an import or an ACR edit still rebuilds it.
+  //
+  // Callers treat this as read-only and filter/sort copies of it.
+  const decoratedFindings = memoOnVersion(assetsAndAcr, function(){
     const hostsMap = new Map(groupAssetsByHost().map(h=>[h.hostKey, h]));
     // A host with N applied STIGs appears N times in `assets` — cache each
     // host's ACR once instead of recomputing inferAutoACR (which rescans
@@ -3626,17 +4211,37 @@
     latestAssets().forEach(a=>{
       const hostKey = a.hostName || a.fileName;
       const acrVal = acrValueFor(hostKey);
+      const sourceLabel = a.hostName || a.fileName;
+      const stigLabel = a.stigTitle || a.fileName;
+      const band = acrBand(acrVal);
       a.vulns.forEach(v=> vulns.push(Object.assign({}, v, {
-        _sourceLabel:(a.hostName||a.fileName), _sourceAssetId:a.id,
-        _stigLabel:(a.stigTitle||a.fileName),
-        _criticality: findingCriticality(acrVal, v.severity), _acrBand: acrBand(acrVal)
+        _sourceLabel: sourceLabel, _sourceAssetId: a.id,
+        _stigLabel: stigLabel,
+        _criticality: findingCriticality(acrVal, v.severity), _acrBand: band
       })));
     });
+    return vulns;
+  });
+
+  // The Host / STIG dropdown option lists are derived from the same decorated
+  // set and are equally stable, so they are cached alongside it rather than
+  // rebuilt (and re-sorted) on every render.
+  const findingsFilterOptions = memoOnVersion(assetsAndAcr, function(){
+    const vulns = decoratedFindings();
+    const src = new Set(), stig = new Set();
+    vulns.forEach(v=>{ if(v._sourceLabel) src.add(v._sourceLabel); if(v._stigLabel) stig.add(v._stigLabel); });
+    return {
+      sourceOptions: Array.from(src).sort((a,b)=>a.localeCompare(b)),
+      stigOptions: Array.from(stig).sort((a,b)=>a.localeCompare(b))
+    };
+  });
+
+  function renderFindingsList(blade, bladeIndex){
+    const vulns = decoratedFindings();
 
     const filtered = filterVulns(vulns, blade.state);
     const defs = FINDING_COLS;
-    const sourceOptions = Array.from(new Set(vulns.map(v=>v._sourceLabel).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
-    const stigOptions = Array.from(new Set(vulns.map(v=>v._stigLabel).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+    const {sourceOptions, stigOptions} = findingsFilterOptions();
 
     // The status tiles / compliance-by-CAT panels must reflect whatever this
     // blade was filtered to (either a preset from the drill that opened it,
@@ -3899,6 +4504,7 @@
       case "stigDetail": return renderStigDetail(blade, bladeIndex);
       case "findings": return renderFindingsList(blade, bladeIndex);
       case "findingDetail": return renderFindingDetail(blade, bladeIndex);
+      case "compliance": return renderCompliance(blade, bladeIndex);
       case "import": return renderImport(blade);
       case "changelog": return renderChangelog(blade, bladeIndex);
       case "changelogDetail": return renderChangelogDetail(blade);
@@ -3929,6 +4535,9 @@
     $("#railCountAssets").textContent = groupAssetsByHost().length;
     $("#railCountStigs").textContent = buildStigGroups().length;
     $("#railCountFindings").textContent = allVulnsCount;
+    // Count of RMF control families actually touched by the loaded findings
+    // (the "(unmapped)" bucket isn't a family, so it doesn't count).
+    $("#railCountCompliance").textContent = complianceFamilyRows().filter(r=>!r.unmapped).length;
 
     const rootMenu = bladeStack.length ? bladeStack[0].__menu : null;
     $$(".rail-item").forEach(r => r.classList.toggle("active", r.dataset.menu === rootMenu));
@@ -4262,7 +4871,22 @@
       if(drillEl.dataset.presetAes) params.presetAES = drillEl.dataset.presetAes;
       if(drillEl.dataset.presetOs) params.presetOS = drillEl.dataset.presetOs;
       if(drillEl.dataset.presetStig) params.presetStig = drillEl.dataset.presetStig;
+      if(drillEl.dataset.presetControl) params.presetControl = drillEl.dataset.presetControl;
       openBlade(idx+1, type, title, params);
+      return;
+    }
+
+    // Compliance blade — expand/collapse a family row in place, rather than
+    // opening a new blade, to reveal its individual control rows.
+    const toggleFamEl = e.target.closest('[data-action="toggle-compliance-family"]');
+    if(toggleFamEl){
+      const blade = bladeStack.find(b=>b.id===toggleFamEl.dataset.bladeId);
+      if(blade){
+        const fam = toggleFamEl.dataset.family;
+        if(blade.state.expandedFamilies.has(fam)) blade.state.expandedFamilies.delete(fam);
+        else blade.state.expandedFamilies.add(fam);
+        refreshBlade(blade.id);
+      }
       return;
     }
 
@@ -4387,6 +5011,7 @@
       const val = acrSel.value;
       if(val === "auto") acrOverrides.delete(hostKey);
       else acrOverrides.set(hostKey, parseInt(val,10));
+      bumpAcrVersion();
       // Refresh every currently-open blade whose content depends on ACR/AES —
       // each refresh is still targeted to that single blade only.
       refreshDependentBlades(b => b.type==="dashboard" || b.type==="assets" || b.type==="stigDetail" || b.type==="findings" || (b.type==="assetDetail" && b.params.hostKey===hostKey));
