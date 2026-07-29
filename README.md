@@ -30,6 +30,51 @@ wks-04821, 8
 
 ACR combines with each finding's severity to drive the **ACR × CAT criticality matrix** (CAT I/II/III + ACR band → Low/Medium/High/Critical) and the **AES** (0–1000 per asset, ACR combined with severity-weighted exposure of Open/Not Reviewed findings — the STIG equivalent of a Nessus risk score, used to rank assets).
 
+## Scoring: AES and CES
+
+### Asset Exposure Score (AES)
+
+AES (0–1000, per asset) combines how much of an asset is non-compliant, weighted by finding severity, with that asset's ACR. Only Open and Not Reviewed findings count against it — Not a Finding and Not Applicable don't. `Not_Applicable` rules are also excluded from the denominator, so an asset's AES only reflects rules that actually apply to it, not how many rules its platform happened to N/A out.
+
+1. **Density** — a severity-weighted average across every applicable rule:
+
+   | Status | CAT I (high) | CAT II (medium) | CAT III (low) |
+   |---|---|---|---|
+   | Open | 15 | 5 | 2 |
+   | Not Reviewed | 5 | 1.5 | 0.5 |
+
+   ```
+   density = (sum of severity weights for Open + Not Reviewed findings) / (applicable rules)
+   ```
+
+2. **Exposure score** — density runs through a saturating curve so a handful of bad findings moves the score quickly, while it tapers as it approaches 1000 instead of requiring near-total non-compliance to get there:
+
+   ```
+   exposureScore = 1000 × (1 − e^(−density / 1.2))
+   ```
+
+3. **AES** — exposure score scaled by the asset's ACR (1–10), so the same finding mix scores higher on a more critical asset:
+
+   ```
+   AES = min(1000, exposureScore × (0.3 + 0.07 × ACR))
+   ```
+
+Bands: **OK** < 300, **Low** 300–399, **Medium** 400–699, **High** 700–899, **Critical** ≥ 900.
+
+![AES vs. non-compliance, by ACR](docs/aes-curve.png)
+
+### Composite Exposure Score (CES)
+
+CES is the fleet-wide KPI — a single number meant to trend over time. It's the ACR-weighted average of every loaded asset's AES, not a flat average: a critical domain controller pulls the number more than a low-value printer at the same AES.
+
+```
+CES = Σ(AES × ACR) / Σ(ACR)   — across every loaded asset
+```
+
+![CES: ACR-weighted vs. flat average](docs/ces-weighting.png)
+
+In the fleet above, a flat average of the eight hosts' AES lands at 462. Weighting by ACR pulls it up to 574, because the two worst-scoring hosts (DC-Primary, WebApp-Ext) also carry the highest ACR — closer to the actual risk picture than treating a printer's exposure the same as a domain controller's.
+
 ## Other features
 
 - **Findings** can be filtered/sorted and exported to CSV per view (**↓ export CSV**).

@@ -185,6 +185,59 @@ section("Findings blade — Group toggle, filters, pagination");
 }
 
 // ======================================================================
+// Findings blade — sticky Group preference across Compliance drills
+//
+// Regression: clicking a control on the Compliance blade (e.g. AC-2) opens
+// a fresh Findings blade via openBlade()/newBlade(), which always started
+// "grouped: false". So Group -> click a different control (SA-4) -> the new
+// blade forgot Group was on. findingsGroupedPref (a module-level variable,
+// same pattern as colPrefs) is meant to seed newBlade() with whatever the
+// user last chose, so the setting survives a fresh drill.
+//
+// The click handler that flips findingsGroupedPref lives inside a delegated
+// DOM listener this harness's fake DOM can't dispatch through (same
+// limitation as every other data-action handler in this file), so the two
+// halves of the contract are checked at the boundaries that are reachable:
+// that newBlade() actually seeds from the module variable, and that the
+// variable is scoped to the Findings blade type only.
+// ======================================================================
+section("Findings blade — sticky Group preference across Compliance drills");
+{
+  const savedPref = findingsGroupedPref; // restore afterward — this is shared session state
+
+  findingsGroupedPref = false;
+  check(newBlade("findings", "Findings", {}).state.grouped === false,
+    "a fresh Findings blade starts ungrouped when the sticky preference is off");
+
+  findingsGroupedPref = true;
+  const afterGroupOn = newBlade("findings", "Findings", {presetControl:"AC-2"});
+  check(afterGroupOn.state.grouped === true,
+    "a fresh Findings blade opened while the sticky preference is on (e.g. drilling into AC-2) starts grouped");
+  const secondDrill = newBlade("findings", "Findings", {presetControl:"SA-4"});
+  check(secondDrill.state.grouped === true,
+    "drilling into a SECOND control (SA-4) with the preference still on also starts grouped — this is the exact scenario reported: AC-2 -> Group -> SA-4");
+  check(secondDrill.state.colFilters.control.has("SA-4") && !secondDrill.state.colFilters.control.has("AC-2"),
+    "each drill still gets its own control filter — only the grouped flag is shared, not the rest of the blade's state");
+
+  // Scoped to the Findings blade only — other blade types must never read
+  // this variable, and must keep their own "grouped" behavior (they don't
+  // have one) unaffected by it.
+  check(newBlade("compliance", "Compliance", {}).state.grouped === false,
+    "the sticky Group preference does not leak into unrelated blade types");
+  check(newBlade("stigs", "STIGs", {}).state.grouped === false,
+    "the sticky Group preference does not leak into the STIGs blade");
+
+  // Rendering must actually reflect the seeded state (not just the raw
+  // state object) — this is what the user sees.
+  const seededBlade = newBlade("findings", "Findings", {});
+  const seededHtml = renderFindingsList(seededBlade, 0);
+  check(/class="group-btn[^"]*grouped[^"]*"[^>]*>Ungroup</.test(seededHtml),
+    "a Findings blade seeded from the sticky preference actually renders grouped, showing an Ungroup button");
+
+  findingsGroupedPref = savedPref;
+}
+
+// ======================================================================
 // Findings blade — column defaults/order (Vuln ID hidden, STIG ID hidden,
 // Rule Title first)
 // ======================================================================
@@ -204,6 +257,40 @@ section("Findings blade — column config");
   blade.state.search = target.vulnNum;
   const filtered = filterVulns(allVulns, blade.state);
   check(filtered.some(v => v.vulnNum === target.vulnNum), "searching by Vuln ID still matches, even though the column is hidden");
+}
+
+// ======================================================================
+// Search bar placeholder text — every search box across the app reads a
+// plain "Search...", not the older per-blade hints ("Search rule title,
+// STIG ID, group...", "Search host, IP, role...", etc.) that named specific
+// fields and were confusing (a user asked what "group" meant).
+// ======================================================================
+section("Search bar placeholders");
+{
+  const PLAIN = 'placeholder="Search..."';
+  const findingsHtml = renderFindingsList(newBlade("findings", "Findings", {}), 0);
+  check(findingsHtml.includes(PLAIN), "Findings blade search box reads plain \\"Search...\\"");
+
+  const assetsHtml = renderAssetsList(newBlade("assets", "Assets", {}), 0);
+  check(assetsHtml.includes(PLAIN), "Assets blade search box reads plain \\"Search...\\"");
+  check(!assetsHtml.includes("Search host, IP, role"), "Assets blade no longer names specific fields in its placeholder");
+
+  const stigsHtml = renderStigsList(newBlade("stigs", "STIGs", {}), 0);
+  check(stigsHtml.includes(PLAIN), "STIGs blade search box reads plain \\"Search...\\"");
+  check(!stigsHtml.includes("Search STIG title, host, version"), "STIGs blade no longer names specific fields in its placeholder");
+
+  const complianceHtml = renderCompliance(newBlade("compliance", "Compliance", {}), 0);
+  check(complianceHtml.includes(PLAIN), "Compliance blade search box reads plain \\"Search...\\"");
+  check(!complianceHtml.includes("Search family code or name"), "Compliance blade no longer names specific fields in its placeholder");
+
+  // Every search-input placeholder anywhere in the app must be exactly this
+  // one string — a stray blade-specific hint elsewhere would slip past the
+  // four checks above.
+  [findingsHtml, assetsHtml, stigsHtml, complianceHtml].forEach((html, i)=>{
+    const matches = Array.from(html.matchAll(/class="search-input"[^>]*placeholder="([^"]*)"/g)).map(m=>m[1]);
+    check(matches.length > 0 && matches.every(p => p === "Search..."),
+      \`blade #\${i}: every search-input placeholder found is exactly "Search..." (got \${JSON.stringify(matches)})\`);
+  });
 }
 
 // ======================================================================
@@ -359,6 +446,85 @@ section("AES / CES math");
     const last = points[points.length-1];
     check(Math.abs(last.aes - ces) <= 1, "latest CES-over-time point matches current dashboard CES (within rounding)");
   }
+
+  // --- AES formula, recalibrated 2026-07-29 — pinned exactly against an
+  // independent re-implementation, so a future change to these constants is
+  // a deliberate recalibration, not silent drift. See computeAES()'s own
+  // comment for the full rationale (steeper curve, heavier CAT I weight,
+  // Not_Applicable excluded from density).
+  function manualAES(counts, acr){
+    const w = {oH:15,oM:5,oL:2, nH:5,nM:1.5,nL:0.5};
+    const raw = counts.openHigh*w.oH + counts.openMed*w.oM + counts.openLow*w.oL
+              + counts.nrHigh*w.nH + counts.nrMed*w.nM + counts.nrLow*w.nL;
+    const applicable = counts.openHigh+counts.openMed+counts.openLow+counts.nrHigh+counts.nrMed+counts.nrLow+counts.naf;
+    const density = applicable ? raw/applicable : 0;
+    const exposureScore = 1000*(1-Math.exp(-density/1.2));
+    const multiplier = 0.3+0.07*acr;
+    return Math.round(Math.min(1000, exposureScore*multiplier));
+  }
+  function mkHost(counts){
+    const vulns = [];
+    const push = (n, status, sev) => { for(let i=0;i<n;i++) vulns.push({status, severity:sev}); };
+    push(counts.openHigh,"Open","high"); push(counts.openMed,"Open","medium"); push(counts.openLow,"Open","low");
+    push(counts.nrHigh,"Not_Reviewed","high"); push(counts.nrMed,"Not_Reviewed","medium"); push(counts.nrLow,"Not_Reviewed","low");
+    push(counts.naf,"NotAFinding","medium");
+    push(counts.na||0,"Not_Applicable","medium");
+    return {hostKey:"synthetic", hostName:"synthetic", stigs:[{vulns}]};
+  }
+
+  // The exact scenario from the bug report: a host at 75% compliant (25% of
+  // applicable rules Open/Not-Reviewed) with a realistic DISA severity mix
+  // (~15% CAT I / 65% CAT II / 20% CAT III among the failing rules). This
+  // used to land around AES 240-320 ("OK"/"Low") — reassuring for a host
+  // with a quarter of its applicable rules failing. It must not anymore.
+  const counts75 = {openHigh:5, openMed:23, openLow:8, nrHigh:1, nrMed:6, nrLow:2, naf:135, na:20};
+  const h75 = mkHost(counts75);
+  const aes75 = computeAES(h75, 8).aes;
+  check(aes75 === manualAES(counts75, 8), \`computeAES matches the pinned formula exactly for a 75%-compliant host (got \${aes75})\`);
+  check(aes75 === 551, \`the reference 75%-compliant/ACR-8 scenario scores AES 551 under the recalibrated curve (got \${aes75})\`);
+  check(aesBand(aes75) !== "OK" && aesBand(aes75) !== "Low",
+    \`a host with 25% of applicable rules failing (typical severity mix, ACR 8) no longer reads as OK/Low — got AES \${aes75} (\${aesBand(aes75)})\`);
+
+  // --- Not_Applicable rules must not affect AES, matching compliancePct()'s
+  // exclusion of N/A from both sides of its ratio. Two hosts with identical
+  // real posture (same open/not-reviewed/not-a-finding counts and
+  // severities) but very different N/A counts must score identically.
+  const lowNA = mkHost(Object.assign({}, counts75, {na:0}));
+  const highNA = mkHost(Object.assign({}, counts75, {na:80}));
+  check(computeAES(lowNA,8).aes === computeAES(highNA,8).aes,
+    "AES is unaffected by how many Not_Applicable rules a host has, given identical open/not-reviewed/not-a-finding counts");
+
+  // --- CAT I findings must weigh meaningfully more than CAT II/III at the
+  // same compliance level — the other half of the recalibration, and the
+  // part that was nearly invisible under the old weights (worst case there
+  // only separated by ~150 points; it must be much wider now).
+  const allCat1 = mkHost({openHigh:36, openMed:0, openLow:0, nrHigh:9, nrMed:0, nrLow:0, naf:135, na:20});
+  const allCat3 = mkHost({openHigh:0, openMed:0, openLow:36, nrHigh:0, nrMed:0, nrLow:9, naf:135, na:20});
+  const aesCat1 = computeAES(allCat1, 8).aes, aesCat3 = computeAES(allCat3, 8).aes;
+  check(aesCat1 > aesCat3, "an all-CAT-I non-compliance profile scores higher AES than an all-CAT-III profile at the same compliance %");
+  check(aesCat1 - aesCat3 > 400,
+    \`CAT I is weighted heavily enough to meaningfully separate the two profiles (gap \${aesCat1 - aesCat3} points, was ~150 under the old weights)\`);
+
+  // --- CES is ACR-weighted, not a flat mean (the other change in this
+  // batch). Two fleets with the SAME pair of AES values but swapped ACRs
+  // must produce different CES — that's what actually proves the weighting
+  // changes the result, rather than merely running without error.
+  const flatMean = Math.round((900+100)/2); // what an unweighted mean gives either way
+  const cesHighCritBad = computeCES([{aes:900, acr:10}, {aes:100, acr:2}]); // the critical host is the exposed one
+  const cesLowCritBad  = computeCES([{aes:900, acr:2}, {aes:100, acr:10}]); // the routine host is the exposed one
+  check(cesHighCritBad !== cesLowCritBad,
+    "swapping which host (critical vs routine) is the exposed one changes CES — proving it's ACR-weighted, not a flat average");
+  check(cesHighCritBad > flatMean, \`a bad AES on the higher-ACR host pulls CES above the flat-mean baseline (\${cesHighCritBad} > \${flatMean})\`);
+  check(cesLowCritBad < flatMean, \`a bad AES on the lower-ACR host pulls CES below the flat-mean baseline (\${cesLowCritBad} < \${flatMean})\`);
+  check(computeCES([{aes:500,acr:5},{aes:500,acr:9}]) === 500, "equal AES across different ACRs still averages to that same value");
+  check(computeCES([{aes:777,acr:1},{aes:777,acr:10}]) === 777, "identical AES everywhere gives that AES back regardless of ACR spread");
+  check(computeCES([]) === 0, "CES of an empty fleet is 0, not NaN");
+
+  // cesHistory() must use the exact same weighting as computeCES(), not an
+  // independently-drifted formula — they share one helper for this reason.
+  check(typeof weightedCES === "function", "weightedCES helper exists and is shared by computeCES and cesHistory");
+  check(weightedCES([[900,10],[100,2]]) === computeCES([{aes:900,acr:10},{aes:100,acr:2}]),
+    "weightedCES([aes,acr] pairs) and computeCES(rows) agree given equivalent input");
 }
 
 // ======================================================================
@@ -593,6 +759,121 @@ section("Security — escaping and CSV injection");
   // 0 must survive as "0" — the old String(c||"") idiom turned it into ""
   check(csvCell(0) === '"0"', "numeric zero exports as 0, not an empty cell");
   check(csvCell(null) === '""' && csvCell(undefined) === '""', "null/undefined export as empty cells");
+}
+
+// ======================================================================
+// Assets / STIGs blades — CSV export
+//
+// Mirrors the Findings blade's existing export: a button that exports
+// whatever the table's current search/filter/sort produced (not the whole
+// fleet unconditionally), reusing the same toCSV()/csvCell() escaping so
+// formula-injection protection isn't something a new export path could
+// accidentally bypass.
+//
+// Blob is monkey-patched for this section only, to capture the CSV text
+// that was actually handed to it rather than re-deriving an expected string
+// independently of the function under test.
+// ======================================================================
+section("Assets / STIGs blades — CSV export");
+{
+  const OrigBlob = global.Blob;
+  let captured = null;
+  global.Blob = function(parts, opts){ captured = parts[0]; return new OrigBlob(parts, opts); };
+
+  // --- Assets blade --------------------------------------------------
+  const assetsBlade = newBlade("assets", "Assets", {});
+  const assetsHtml = renderAssetsList(assetsBlade, 0);
+  check(assetsHtml.includes('data-action="export-assets"'), "Assets blade renders an export button");
+  check(assetsHtml.includes('class="export-btn" data-blade-id="'+assetsBlade.id+'" data-action="export-assets"'),
+    "Assets export button carries its blade id, wired the same way as the Findings export button");
+  check(Array.isArray(assetsBlade._lastAssetRows) && assetsBlade._lastAssetRows.length === hosts.length,
+    \`Assets blade stashes its full row set for export when unfiltered (\${assetsBlade._lastAssetRows.length} == \${hosts.length})\`);
+
+  captured = null;
+  exportAssetRowsCSV(assetsBlade._lastAssetRows, "assets_test");
+  check(captured !== null, "exportAssetRowsCSV actually produces CSV content");
+  let lines = captured.split("\\r\\n");
+  check(lines[0] === '"Host Name","IP Address","Role","Operating System","ACR","AES","STIGs","Total Rules","Open","Not Reviewed","% Compliant","Last Scanned","History"',
+    "Assets CSV header matches the exported column set");
+  check(lines.length === hosts.length + 1, \`Assets CSV has one data row per host plus the header (\${lines.length} lines for \${hosts.length} hosts)\`);
+  const sampleAssetRow = assetsBlade._lastAssetRows[0];
+  const expectedAssetLine = [
+    sampleAssetRow.host.hostName||"", sampleAssetRow.host.hostIp||"", sampleAssetRow.host.role||"", sampleAssetRow.os||"",
+    sampleAssetRow.acr, sampleAssetRow.aes, sampleAssetRow.host.stigs.length, sampleAssetRow.total,
+    sampleAssetRow.open, sampleAssetRow.nr, sampleAssetRow.compliance,
+    (sampleAssetRow.lastScannedInfo && sampleAssetRow.lastScannedInfo.label) || "—", sampleAssetRow.history
+  ].map(csvCell).join(",");
+  check(lines[1] === expectedAssetLine, "the first exported Assets row's fields match that host's actual data, in the documented column order");
+
+  // Export must follow the search box, not export the unfiltered fleet.
+  // Expected count mirrors filterAssetRows()'s own predicate exactly (name
+  // OR IP OR role), rather than a simplified re-guess that could
+  // under/over-count against fields the real filter also checks.
+  const searchTerm = (sampleAssetRow.host.hostName||"").slice(0,3).toLowerCase();
+  check(searchTerm.length > 0, "test fixture: sample host has a name to search on");
+  const filteredAssetsBlade = newBlade("assets", "Assets", {});
+  filteredAssetsBlade.state.search = searchTerm;
+  renderAssetsList(filteredAssetsBlade, 0);
+  const expectedFilteredCount = buildAssetRows(hosts).filter(x =>
+    (x.host.hostName||"").toLowerCase().includes(searchTerm) ||
+    (x.host.hostIp||"").toLowerCase().includes(searchTerm) ||
+    (x.host.role||"").toLowerCase().includes(searchTerm)
+  ).length;
+  check(filteredAssetsBlade._lastAssetRows.length === expectedFilteredCount,
+    \`searching the Assets blade narrows what export-assets would export (\${filteredAssetsBlade._lastAssetRows.length} == \${expectedFilteredCount})\`);
+  check(filteredAssetsBlade._lastAssetRows.length < hosts.length,
+    "the search term actually narrows the fleet (test fixture sanity check)");
+
+  // A hostile hostname must not slip a live formula into the exported CSV —
+  // proves exportAssetRowsCSV routes through the same csvCell() escaping as
+  // every other export, not a hand-rolled join that skipped it.
+  const hostileHost = {host:{hostName:"=cmd|test!A1", hostIp:"", role:"", stigs:[{vulns:[]}]}, os:"", acr:5, aes:100, total:0, open:0, nr:0, compliance:100, lastScannedInfo:null, history:0};
+  captured = null;
+  exportAssetRowsCSV([hostileHost], "hostile_test");
+  check(captured.split("\\r\\n")[1].startsWith("\\"'="), "a hostile host name is neutralized in the Assets CSV export, same as the Findings export");
+
+  // --- STIGs blade -----------------------------------------------------
+  const stigGroups = buildStigGroups();
+  const stigsBlade = newBlade("stigs", "STIGs", {});
+  const stigsHtml = renderStigsList(stigsBlade, 0);
+  check(stigsHtml.includes('data-action="export-stigs"'), "STIGs blade renders an export button");
+  check(stigsHtml.includes('class="export-btn" data-blade-id="'+stigsBlade.id+'" data-action="export-stigs"'),
+    "STIGs export button carries its blade id, wired the same way as the Findings export button");
+  check(Array.isArray(stigsBlade._lastStigRows) && stigsBlade._lastStigRows.length === stigGroups.length,
+    \`STIGs blade stashes its full row set for export when unfiltered (\${stigsBlade._lastStigRows.length} == \${stigGroups.length})\`);
+
+  captured = null;
+  exportStigRowsCSV(stigsBlade._lastStigRows, "stigs_test");
+  check(captured !== null, "exportStigRowsCSV actually produces CSV content");
+  lines = captured.split("\\r\\n");
+  check(lines[0] === '"STIG Title","Version","Release Info","Host Count","Total Rules","Open","Not Reviewed","% Compliant"',
+    "STIGs CSV header matches the exported column set");
+  check(lines.length === stigGroups.length + 1, \`STIGs CSV has one data row per STIG plus the header (\${lines.length} lines for \${stigGroups.length} STIGs)\`);
+  const sampleStigRow = stigsBlade._lastStigRows[0];
+  const expectedStigLine = [
+    sampleStigRow.stigTitle||"Untitled STIG", sampleStigRow.stigVersion||"", sampleStigRow.releaseInfo||"",
+    sampleStigRow.hostCount, sampleStigRow.total, sampleStigRow.open, sampleStigRow.nr, sampleStigRow.compliance
+  ].map(csvCell).join(",");
+  check(lines[1] === expectedStigLine, "the first exported STIGs row's fields match that STIG's actual data, in the documented column order");
+
+  // Same "export follows the filter" guarantee on the STIGs blade. Expected
+  // count mirrors filterStigRows()'s own predicate exactly (title OR any
+  // host name OR version).
+  const stigSearchTerm = (sampleStigRow.stigTitle||"").slice(0,3).toLowerCase();
+  if(stigSearchTerm.length > 0){
+    const filteredStigsBlade = newBlade("stigs", "STIGs", {});
+    filteredStigsBlade.state.search = stigSearchTerm;
+    renderStigsList(filteredStigsBlade, 0);
+    const expectedFilteredStigCount = buildStigGroups().filter(g =>
+      (g.stigTitle||"").toLowerCase().includes(stigSearchTerm) ||
+      Array.from(g.hostNames).some(h=>(h||"").toLowerCase().includes(stigSearchTerm)) ||
+      (g.stigVersion||"").toLowerCase().includes(stigSearchTerm)
+    ).length;
+    check(filteredStigsBlade._lastStigRows.length === expectedFilteredStigCount,
+      \`searching the STIGs blade narrows what export-stigs would export (\${filteredStigsBlade._lastStigRows.length} == \${expectedFilteredStigCount})\`);
+  }
+
+  global.Blob = OrigBlob;
 }
 
 // ======================================================================
@@ -836,6 +1117,79 @@ section("Compliance blade — RMF control families");
   let ascOk = true;
   for(let i=1;i<ascRows.length;i++){ if(ascRows[i].compliance < ascRows[i-1].compliance) ascOk = false; }
   check(ascOk, "sorting the Compliance blade by % compliant orders worst-first ascending");
+  compBlade.state.sortKey = "family"; compBlade.state.sortDir = 1;
+
+  // --- Expanded control rows follow whichever sort the family table is
+  // using, not a fixed control-code order. Regression: expanding a family
+  // used to always sort its controls by control code regardless of what
+  // column the user had sorted the family table by — sorting the outer
+  // table by % Compliant reordered the family rows but left each expanded
+  // family's own controls untouched.
+  {
+    // A synthetic control set exercises the sort logic directly, independent
+    // of whatever the real sample data happens to contain — this is what
+    // actually pins the bug (numeric vs. lexicographic control-code order)
+    // rather than depending on the sample set having double-digit controls.
+    const synth = () => ([
+      {control:"AC-1", compliance:50, total:5, open:2, nr:0, naf:3, na:0, hostCount:1},
+      {control:"AC-10", compliance:20, total:5, open:4, nr:0, naf:1, na:0, hostCount:1},
+      {control:"AC-2", compliance:90, total:5, open:0, nr:0, naf:5, na:0, hostCount:1},
+      {control:"AC-20", compliance:10, total:5, open:4, nr:1, naf:0, na:0, hostCount:1},
+      {control:"AC-3", compliance:70, total:5, open:1, nr:0, naf:4, na:0, hostCount:1}
+    ]);
+    // Default state — sortKey "family" (what a freshly-opened Compliance
+    // blade starts with) falls through to the numeric-aware default branch,
+    // since control rows have no "family" field of their own.
+    const byCode = sortComplianceRows(synth(), {sortKey:"family", sortDir:1}, "control").map(r=>r.control);
+    check(byCode.join(",") === "AC-1,AC-2,AC-3,AC-10,AC-20",
+      \`control rows sort numerically (AC-2 before AC-10), not lexicographically — got \${byCode.join(",")}\`);
+    const byCodeDesc = sortComplianceRows(synth(), {sortKey:"family", sortDir:-1}, "control").map(r=>r.control);
+    check(byCodeDesc.join(",") === "AC-20,AC-10,AC-3,AC-2,AC-1", "reversing direction reverses the numeric control-code order too");
+
+    // The actual regression: sortKey "compliance" must reorder control rows
+    // by their own % compliant, worst-first ascending / best-first descending.
+    const byPct = sortComplianceRows(synth(), {sortKey:"compliance", sortDir:1}, "control").map(r=>r.control);
+    check(byPct.join(",") === "AC-20,AC-10,AC-1,AC-3,AC-2",
+      \`control rows sort by their own % compliant when that's the chosen column — got \${byPct.join(",")}\`);
+    const byPctDesc = sortComplianceRows(synth(), {sortKey:"compliance", sortDir:-1}, "control").map(r=>r.control);
+    check(byPctDesc.join(",") === "AC-2,AC-3,AC-1,AC-10,AC-20", "descending % compliant sorts control rows best-first");
+
+    // Other sortable columns carry through too (open count here).
+    const byOpen = sortComplianceRows(synth(), {sortKey:"open", sortDir:1}, "control").map(r=>r.control);
+    check(byOpen.join(",") === "AC-2,AC-3,AC-1,AC-10,AC-20", "control rows also sort by Open count when that's the chosen column");
+  }
+
+  // Integration check against the real rendered blade: expand a family that
+  // actually has spread in its controls' % compliant, sort the family table
+  // by compliance, and confirm the rendered sub-rows come out in that order —
+  // this is what would have caught the bug via the real render path, not
+  // just the shared sort helper.
+  {
+    const candidates = famRows.filter(r=>!r.unmapped && r.controlCount >= 3)
+      .map(r => ({row:r, ctrl:complianceControlRows(r.family)}))
+      .filter(x => new Set(x.ctrl.map(c=>c.compliance)).size >= 2);
+    check(candidates.length > 0, "sample data has a family with 3+ controls and varying compliance to test sort integration against");
+    if(candidates.length){
+      const {row: sortTestFam, ctrl: sortTestCtrl} = candidates[0];
+      const sortBlade = newBlade("compliance", "Compliance", {});
+      sortBlade.state.sortKey = "compliance"; sortBlade.state.sortDir = 1;
+      sortBlade.state.expandedFamilies.add(sortTestFam.family);
+      const sortedHtml = renderCompliance(sortBlade, 0);
+      const renderedOrder = Array.from(sortedHtml.matchAll(/class="compliance-sub-row"[^>]*data-preset-control="([^"]+)"/g)).map(m=>m[1]);
+      const expectedOrder = sortTestCtrl.slice().sort((a,b)=>a.compliance-b.compliance).map(c=>c.control);
+      check(renderedOrder.length === sortTestCtrl.length,
+        \`expanding \${sortTestFam.family} under a compliance sort still renders all \${sortTestCtrl.length} of its controls (got \${renderedOrder.length})\`);
+      check(renderedOrder.join(",") === expectedOrder.join(","),
+        \`\${sortTestFam.family}'s expanded control rows render in ascending % compliant order, matching the family table's sort (got \${renderedOrder.join(",")}, expected \${expectedOrder.join(",")})\`);
+
+      sortBlade.state.sortDir = -1;
+      const sortedHtmlDesc = renderCompliance(sortBlade, 0);
+      const renderedOrderDesc = Array.from(sortedHtmlDesc.matchAll(/class="compliance-sub-row"[^>]*data-preset-control="([^"]+)"/g)).map(m=>m[1]);
+      const expectedOrderDesc = sortTestCtrl.slice().sort((a,b)=>b.compliance-a.compliance).map(c=>c.control);
+      check(renderedOrderDesc.join(",") === expectedOrderDesc.join(","),
+        \`flipping the family table's sort direction also flips \${sortTestFam.family}'s expanded control-row order\`);
+    }
+  }
 
   // --- Menu wiring
   check(MENU_TITLE.compliance === "Compliance", "Compliance has a menu title");
@@ -1261,8 +1615,273 @@ section("Cache invalidation");
   bumpAcrVersion();
 }
 
+// ======================================================================
+// Folder drop — recursive directory walk
+//
+// Dropping a folder hands the app a FileSystemDirectoryEntry and no files,
+// so the tree is walked explicitly. The failure modes worth pinning are the
+// ones that stay invisible until a user hits them with real data: the
+// readEntries() batch cap silently truncating large folders, and one
+// unreadable branch aborting the whole drop.
+//
+// Async, so it runs inside an IIFE that also prints the final summary —
+// every synchronous section above has already completed by this point.
+// ======================================================================
+(async function(){
+section("Folder drop — recursive directory walk");
+
+// --- Fake FileSystemEntry tree ---------------------------------------
+// Chrome hands back at most 100 entries per readEntries() call; BATCH
+// mimics that so the pagination loop is actually exercised.
+const BATCH = 100;
+let readEntriesCalls = 0;
+function fakeFile(name){
+  return { isFile:true, isDirectory:false, name, fullPath:"/"+name,
+    file(cb){ cb({ name, size: 10 }); } };
+}
+function fakeDir(name, children){
+  return { isFile:false, isDirectory:true, name, fullPath:"/"+name,
+    createReader(){
+      let i = 0;
+      return { readEntries(cb){
+        readEntriesCalls++;
+        const batch = children.slice(i, i + BATCH);
+        i += batch.length;
+        setTimeout(()=>cb(batch), 0);
+      } };
+    } };
+}
+// A directory whose reader always errors — one bad branch must not sink
+// the rest of the drop.
+function unreadableDir(name){
+  return { isFile:false, isDirectory:true, name, fullPath:"/"+name,
+    createReader(){ return { readEntries(cb, errcb){ setTimeout(()=>errcb(new Error("EACCES")), 0); } }; } };
+}
+function fakeUnreadableFile(name){
+  return { isFile:true, isDirectory:false, name, fullPath:"/"+name,
+    file(cb, errcb){ setTimeout(()=>errcb(new Error("gone")), 0); } };
+}
+const names = out => out.map(f=>f.name).sort();
+
+// --- Flat folder, mixed contents --------------------------------------
+{
+  const dir = fakeDir("drop", [
+    fakeFile("a.cklb"), fakeFile("b.ckl"), fakeFile("c.xml"),
+    fakeFile("readme.txt"), fakeFile("notes.md"), fakeFile("archive.zip")
+  ]);
+  const out = [];
+  await walkEntry(dir, out, 0);
+  check(out.length === 3, \`a dropped folder yields only its checklists (got \${out.length} of 6 files)\`);
+  check(names(out).join(",") === "a.cklb,b.ckl,c.xml", "non-checklist files in the folder are ignored");
+}
+
+// --- The readEntries() batch cap --------------------------------------
+// The regression this guards: reading one batch and stopping silently
+// drops everything past the 100th entry, so a 250-checklist folder
+// imports 100 files and still looks like it worked.
+{
+  const many = [];
+  for(let i = 0; i < 250; i++) many.push(fakeFile("host" + i + ".cklb"));
+  const dir = fakeDir("big", many);
+  readEntriesCalls = 0;
+  const out = [];
+  await walkEntry(dir, out, 0);
+  check(out.length === 250, \`all 250 checklists are found, not just the first batch of \${BATCH} (got \${out.length})\`);
+  check(readEntriesCalls >= 3, \`readEntries() is called until it returns empty (\${readEntriesCalls} calls for 250 entries)\`);
+}
+
+// --- Nested subfolders -------------------------------------------------
+{
+  const tree = fakeDir("root", [
+    fakeFile("top.cklb"),
+    fakeDir("linux", [ fakeFile("rhel1.cklb"), fakeFile("rhel2.cklb"),
+      fakeDir("deep", [ fakeFile("nested.ckl"), fakeFile("skip.txt") ]) ]),
+    fakeDir("windows", [ fakeFile("win1.cklb") ]),
+    fakeDir("empty", [])
+  ]);
+  const out = [];
+  await walkEntry(tree, out, 0);
+  check(out.length === 5, \`checklists are collected recursively through subfolders (got \${out.length}, expected 5)\`);
+  check(names(out).join(",") === "nested.ckl,rhel1.cklb,rhel2.cklb,top.cklb,win1.cklb",
+    "files from every nesting level are present exactly once");
+}
+
+// --- Depth guard -------------------------------------------------------
+{
+  let deep = fakeDir("leaf", [fakeFile("buried.cklb")]);
+  for(let i = 0; i < 40; i++) deep = fakeDir("d" + i, [deep]);
+  const out = [];
+  await walkEntry(deep, out, 0);
+  check(out.length === 0, "a tree deeper than the depth guard stops rather than recursing without bound");
+  const shallow = fakeDir("d0", [fakeDir("d1", [fakeFile("ok.cklb")])]);
+  const out2 = [];
+  await walkEntry(shallow, out2, 0);
+  check(out2.length === 1, "normal nesting is still well inside the depth guard");
+}
+
+// --- Failures on one branch don't sink the drop ------------------------
+{
+  const tree = fakeDir("root", [
+    fakeFile("good1.cklb"),
+    unreadableDir("locked"),
+    fakeUnreadableFile("corrupt.cklb"),
+    fakeDir("fine", [ fakeFile("good2.cklb") ])
+  ]);
+  const out = [];
+  await walkEntry(tree, out, 0);
+  check(out.length === 2, \`an unreadable folder and an unreadable file are skipped, the rest still load (got \${out.length})\`);
+  check(names(out).join(",") === "good1.cklb,good2.cklb", "the readable checklists are exactly the ones collected");
+}
+
+// --- collectDroppedFiles: entry API vs plain file list -----------------
+{
+  const plain = {
+    items: [ {kind:"file", webkitGetAsEntry: ()=> fakeFile("x.cklb")} ],
+    files: [ {name:"x.cklb"}, {name:"y.cklb"} ]
+  };
+  check((await collectDroppedFiles(plain)).length === 2,
+    "a drop containing no folders uses the plain file list unchanged");
+
+  const withDir = {
+    items: [ {kind:"file", webkitGetAsEntry: ()=> fakeDir("f", [fakeFile("a.cklb"), fakeFile("b.cklb"), fakeFile("n.txt")])} ],
+    files: []
+  };
+  const got2 = await collectDroppedFiles(withDir);
+  check(got2.length === 2, \`a dropped folder is expanded even though dataTransfer.files is empty (got \${got2.length})\`);
+
+  const mixed = {
+    items: [
+      {kind:"file", webkitGetAsEntry: ()=> fakeFile("loose.cklb")},
+      {kind:"file", webkitGetAsEntry: ()=> fakeDir("f", [fakeFile("inner.cklb")])}
+    ],
+    files: [ {name:"loose.cklb"} ]
+  };
+  const got3 = await collectDroppedFiles(mixed);
+  check(got3.length === 2 && got3.map(f=>f.name).sort().join(",") === "inner.cklb,loose.cklb",
+    "a drop mixing a loose file with a folder returns both");
+
+  // Dragged text/links come through as kind:"string". Real browsers return
+  // null from webkitGetAsEntry for those, but the string item here returns a
+  // populated directory — so this only passes if the kind check is what
+  // excludes it, not the incidental null.
+  const noisy = {
+    items: [ {kind:"string", webkitGetAsEntry: ()=> fakeDir("notreal", [fakeFile("ghost.cklb")])},
+             {kind:"file", webkitGetAsEntry: ()=> fakeDir("f", [fakeFile("a.cklb")])} ],
+    files: []
+  };
+  const noisyOut = await collectDroppedFiles(noisy);
+  check(noisyOut.length === 1 && noisyOut[0].name === "a.cklb",
+    "dragged text or links are excluded by item kind, not just by returning no entry");
+
+  // An item that throws from webkitGetAsEntry must not sink the drop.
+  const thrower = {
+    items: [ {kind:"file", webkitGetAsEntry: ()=>{ throw new Error("nope"); }},
+             {kind:"file", webkitGetAsEntry: ()=> fakeDir("f", [fakeFile("survivor.cklb")])} ],
+    files: []
+  };
+  const throwOut = await collectDroppedFiles(thrower);
+  check(throwOut.length === 1 && throwOut[0].name === "survivor.cklb",
+    "an item that throws while being read is skipped, the rest of the drop still loads");
+
+  const barren = {
+    items: [ {kind:"file", webkitGetAsEntry: ()=> fakeDir("f", [fakeFile("a.txt"), fakeFile("b.docx")])} ],
+    files: []
+  };
+  const got5 = await collectDroppedFiles(barren);
+  check(Array.isArray(got5) && got5.length === 0,
+    "a folder with no checklists resolves to an empty list, not an error");
+}
+
+// --- Both entry points agree on what counts as a checklist -------------
+{
+  // The folder picker (webkitdirectory) reports every file in the tree and
+  // relies on handleFiles to filter — same predicate the walk uses.
+  check(CHECKLIST_RE.test("a.ckl") && CHECKLIST_RE.test("a.cklb") && CHECKLIST_RE.test("a.xml"),
+    "the shared checklist pattern accepts .ckl/.cklb/.xml");
+  check(!CHECKLIST_RE.test("a.txt") && !CHECKLIST_RE.test("cklb.txt") && !CHECKLIST_RE.test("a.ckl.bak"),
+    "the shared checklist pattern rejects lookalikes and matches only a real trailing extension");
+  check(CHECKLIST_RE.test("HOST.CKLB") && CHECKLIST_RE.test("Host.Ckl"), "extension matching is case-insensitive");
+}
+
+// ======================================================================
+// Import — duplicate CKL/CKLB detection
+//
+// Regression: uploading the exact same file twice added a second copy of
+// every host/STIG entry and inflated the "N STIG files loaded" counter.
+// handleFiles now hashes each file's raw text (hashFileText) and skips a
+// file whose hash is already registered in importedFileHashes, regardless
+// of what it's named — and removeAsset frees a file's hash once every asset
+// it produced has been removed, so a deliberate re-import still works.
+//
+// Drives the real async handleFiles()/FileReader path (stubbed here, since
+// this harness has no real FileReader) rather than calling hashFileText in
+// isolation, so the whole pipeline — not just the hash function — is proven
+// to skip duplicates.
+// ======================================================================
+section("Import — duplicate CKL/CKLB detection");
+{
+  const savedFileReader = global.FileReader;
+  const savedAlert = global.alert;
+  const alerts = [];
+  global.alert = (msg)=> alerts.push(msg);
+  class FakeFileReader {
+    readAsText(file){
+      Promise.resolve().then(()=>{
+        if(file.__err){ this.error = new Error("boom"); if(this.onerror) this.onerror(); return; }
+        if(this.onload) this.onload({target:{result: file.__text}});
+      });
+    }
+  }
+  global.FileReader = FakeFileReader;
+  function fakeUploadFile(name, text){ return {name, __text:text}; }
+
+  const sampleCklb = sampleFiles.find(f => f.endsWith(".cklb"));
+  check(!!sampleCklb, "found a sample .cklb file to build the duplicate-import test from");
+  const sampleText = fs.readFileSync(path.join(SAMPLES_DIR, sampleCklb), "utf8");
+
+  const beforeCount = assets.length;
+  const beforeHashCount = importedFileHashes.size;
+
+  handleFiles([ fakeUploadFile("dup_test_a.cklb", sampleText) ]);
+  await new Promise(r => setTimeout(r, 50));
+  const afterFirst = assets.length;
+  check(afterFirst > beforeCount, "first upload of a file adds assets");
+  check(importedFileHashes.size === beforeHashCount + 1, "importing a new file registers exactly one new content hash");
+
+  // Same bytes, different filename — the guard must be content-based.
+  handleFiles([ fakeUploadFile("dup_test_b_renamed.cklb", sampleText) ]);
+  await new Promise(r => setTimeout(r, 50));
+  check(assets.length === afterFirst,
+    \`re-uploading identical content under a different filename adds no new assets (\${assets.length} == \${afterFirst})\`);
+  check(alerts.some(m => /already loaded/.test(m)),
+    "the user is told the duplicate was skipped rather than silently dropped");
+
+  // A genuinely different file must still import normally alongside the guard.
+  const otherSample = sampleFiles.find(f => f !== sampleCklb);
+  const otherText = fs.readFileSync(path.join(SAMPLES_DIR, otherSample), "utf8");
+  handleFiles([ fakeUploadFile("dup_test_c.cklb", otherText) ]);
+  await new Promise(r => setTimeout(r, 50));
+  check(assets.length > afterFirst, "a genuinely different file still imports normally alongside the dedup guard");
+
+  // Removing every asset a file produced frees its hash for a deliberate re-import.
+  const taggedIds = assets.filter(a => a.sourceFile === "dup_test_a.cklb").map(a => a.id);
+  check(taggedIds.length > 0, "the first upload's assets are findable by sourceFile, to remove them");
+  const hashBeforeRemoval = importedFileHashes.size;
+  taggedIds.forEach(id => removeAsset(id));
+  check(importedFileHashes.size === hashBeforeRemoval - 1, "removing every asset a file produced frees its content hash");
+
+  const afterRemoval = assets.length;
+  handleFiles([ fakeUploadFile("dup_test_a_again.cklb", sampleText) ]);
+  await new Promise(r => setTimeout(r, 50));
+  check(assets.length > afterRemoval, "after removal, the same content can be deliberately re-imported");
+
+  global.FileReader = savedFileReader;
+  global.alert = savedAlert;
+}
+
 console.log(\`\\n\${passes} passed, \${failures} failed.\`);
 if(failures > 0) process.exit(1);
+})();
 `;
 
 // ---------------------------------------------------------------------

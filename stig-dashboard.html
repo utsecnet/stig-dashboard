@@ -110,6 +110,12 @@
     font-family:var(--mono);font-size:12px;color:var(--void);background:var(--naf);
     border:none;padding:9px 18px;border-radius:3px;cursor:pointer;font-weight:600;letter-spacing:.02em;
   }
+  /* Second action ("Choose folder") is the quieter of the two — same shape,
+     outlined rather than filled, so "Choose file(s)" stays the primary. */
+  .dropzone .pick + .pick{
+    margin-left:8px;background:transparent;color:var(--naf);box-shadow:inset 0 0 0 1px var(--naf);
+  }
+  .dropzone .pick + .pick:hover{background:rgba(53,199,126,.12);}
   .dropzone .hint{margin-top:18px;font-family:var(--mono);font-size:10.5px;color:var(--dim);letter-spacing:.03em;}
 
   /* ===== Background file-loading indicator (unobtrusive corner toast) ===== */
@@ -559,16 +565,21 @@
   <span id="ledgerStatus"><span class="prompt">$</span> awaiting file<span class="cursor-inline">_</span></span>
   <button id="addMoreBtn" style="display:none;">+ add file</button>
   <input type="file" id="fileInput" accept=".ckl,.cklb,.xml" multiple>
+  <!-- webkitdirectory turns this into a folder picker; it reports every file
+       in the chosen tree, which handleFiles() then filters to checklists.
+       Kept as a separate input because an input can be one or the other. -->
+  <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none;">
   <input type="file" id="acrCsvInput" accept=".csv" style="display:none;">
 </div>
 
 <div class="empty-stage" id="emptyStage">
   <div class="dropzone" id="dropzone">
     <div class="glyph">&gt; drop_target.ckl / .cklb<span class="cursor"></span></div>
-    <h1>Drop CKL/CKLB files to build the dashboard</h1>
+    <h1>Drop CKL/CKLB files or a folder to build the dashboard</h1>
     <p>Runs entirely in this browser tab — nothing is uploaded anywhere.<br>
-       Accepts <code>.ckl</code> and <code>.cklb</code> checklist files. Drop every applicable STIG for a device at once, then browse by asset, STIG, or finding.</p>
+       Accepts <code>.ckl</code> and <code>.cklb</code> checklist files, or a folder — subfolders are searched too. Drop every applicable STIG for a device at once, then browse by asset, STIG, or finding.</p>
     <button class="pick" id="pickBtn">Choose file(s)</button>
+    <button class="pick" id="pickFolderBtn">Choose folder</button>
     <div class="hint">NO NETWORK REQUIRED · NO DATA LEAVES THIS TAB</div>
   </div>
   <div class="empty-copyright">© 2026 utsecnet. All rights reserved.</div>
@@ -1582,7 +1593,8 @@
   const CHANGELOG = [
     {version:"2026.1", date:"July 22, 2026", notes:["Initial release"]},
     {version:"2026.1.01", date:"July 25, 2026", features:["Added CKL/CKLB file import indicator", "Added Vuln ID column to Findings tables", "Widened Findings blade for readability", "Added Last Scanned column to Assets table", "Asset Detail now shows last scanned date", "Added History column (checklist count) to Assets table", "Added AES Over Time chart to Asset Detail", "Tightened Asset Detail layout for space efficiency", "Added CES Over Time chart to top of Dashboard", "Combined compliance bars and tiles on Findings dashboard", "Made STIG ID column optional; reordered Findings columns", "Vuln ID column now hidden by default but still searchable", "Combined compliance bars and tiles on Findings blade", "Added Group/Ungroup button to Findings blade", "Renamed Source column to Host on Findings blade", "Added Affected Assets list to finding detail (grouped view)"], fixes:["Removed dead filter-chip code", "Cut redundant ACR recalculation on asset views", "Change log now lists newest release first", "Re-scanned STIGs no longer double-count in totals", "AES no longer saturates and ignores compliance changes", "AES vs Finding Count now counts only open/not-reviewed findings", "Escaped finding row IDs to block HTML injection", "Neutralized spreadsheet formula injection in CSV exports", "Unreadable files no longer stall the import loader", "Import errors now report once, not per file", "Restored blinking caret on awaiting-file prompt", "Sped up rendering for large asset fleets"]},
-    {version:"2026.1.02", date:"July 27, 2026", features:["Added Control Number column to Findings tables", "Added Compliance blade summarizing RMF control families", "Compliance blade rows expand in place to show controls", "Compliance families shown as colored stat-panel grid"], fixes:["Trend chart dates angle instead of overlapping", "Changelog dates no longer drift with page load", "AES/CES history no longer splits one day into many", "Findings search is clearer, now finds Control Number", "% Compliant no longer counts Not Applicable rules", "Removed duplicate status tiles from Compliance blade", "Compliance summary no longer touches the panel below", "Large imports use far less memory", "Faster CKL import; attributes read in one pass", "Files import in batches, keeping the page responsive", "Findings and Compliance blades render much faster", "Hostile checklist attribute names can't pollute parsing"]}
+    {version:"2026.1.02", date:"July 27, 2026", features:["Added Control Number column to Findings tables", "Added Compliance blade summarizing RMF control families", "Compliance blade rows expand in place to show controls", "Compliance families shown as colored stat-panel grid"], fixes:["Trend chart dates angle instead of overlapping", "Changelog dates no longer drift with page load", "AES/CES history no longer splits one day into many", "Findings search is clearer, now finds Control Number", "% Compliant no longer counts Not Applicable rules"]},
+    {version:"2026.1.03", date:"July 29, 2026", features:["Drop a folder to import every checklist inside it", "Added Choose folder button to the import screen", "Added CSV export to the Assets blade", "Added CSV export to the STIGs blade"], fixes:["Removed duplicate status tiles from Compliance blade", "Compliance summary no longer touches the panel below", "Large imports use far less memory", "Faster CKL import; attributes read in one pass", "Files import in batches, keeping the page responsive", "Findings and Compliance blades render much faster", "Hostile checklist attribute names can't pollute parsing", "Search boxes all read plain \"Search...\" now", "Group setting persists across Compliance drill-ins", "Expanded controls now follow the family table's sort", "Control numbers sort numerically, not 20 before 3", "AES now reacts sooner to partial compliance", "CAT I findings weigh more heavily in AES", "AES no longer varies with a host's N/A rule count", "CES now weights each asset's AES by its ACR", "Re-uploading the same CKL/CKLB no longer duplicates it"]}
   ];
 
   let assets = []; // {id, fileName, hostName, hostIp, stigTitle, stigVersion, releaseInfo, vulns:[...]}
@@ -1624,6 +1636,27 @@
     assets = list;
     bumpAssetsVersion();
     return assets.length;
+  }
+
+  // ---- Duplicate-import detection ---------------------------------------
+  // Keyed by a hash of the raw file text, not the filename — a re-uploaded
+  // file with identical bytes is what actually produces duplicate host/STIG
+  // rows and inflates the "N STIG files loaded" counter, regardless of what
+  // it happens to be named. Value is the number of currently-live assets
+  // tagged with that hash, so removing every asset a file produced frees the
+  // hash again and the same file can be re-imported deliberately.
+  const importedFileHashes = new Map(); // hash -> live asset count
+  function hashFileText(text){
+    // FNV-1a 32-bit over the full text, plus the length as a suffix so two
+    // different-length strings can't collide onto the same key by chance.
+    // Not cryptographic, but a single fast pass is all this needs — we're
+    // already reading the whole string into memory to parse it.
+    let h = 0x811c9dc5;
+    for(let i = 0; i < text.length; i++){
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 0).toString(36) + "_" + text.length;
   }
 
   // ACR overrides are user-editable independently of the imported data, and
@@ -1944,8 +1977,116 @@
     return results;
   }
 
+  // ---- Recursive folder drop -------------------------------------------
+  // Dropping a directory hands us a FileSystemDirectoryEntry rather than any
+  // files, so the tree has to be walked explicitly to find the checklists
+  // inside it. Used by the drop handler below; see collectDroppedFiles().
+  const CHECKLIST_RE = /\.(ckl|cklb|xml)$/i;
+  const MAX_DIR_DEPTH = 12;      // guards against symlink loops and pathological nesting
+  const MAX_DROPPED_FILES = 5000; // stops a stray drop of / from hanging the tab
+
+  // readEntries() is specified to return "some" entries per call, and in
+  // practice Chrome caps it at 100 — a directory of 250 checklists reports
+  // only the first 100 unless you keep calling until it returns an empty
+  // batch. This is the single most common bug in directory-drop code.
+  function readAllDirectoryEntries(dirReader){
+    return new Promise((resolve, reject)=>{
+      const all = [];
+      const readBatch = ()=>{
+        dirReader.readEntries(batch=>{
+          if(!batch.length){ resolve(all); return; }
+          for(let i = 0; i < batch.length; i++) all.push(batch[i]);
+          readBatch();
+        }, reject);
+      };
+      readBatch();
+    });
+  }
+
+  function entryToFile(fileEntry){
+    return new Promise((resolve)=>{
+      fileEntry.file(
+        f => resolve(f),
+        err => { console.error("Could not read dropped file", fileEntry.fullPath, err); resolve(null); }
+      );
+    });
+  }
+
+  // Depth-first walk collecting checklist files. Errors on one branch are
+  // logged and skipped rather than aborting the whole drop — a folder tree
+  // routinely contains something unreadable, and losing the other 200
+  // checklists because of it would be worse than silently skipping it.
+  async function walkEntry(entry, out, depth){
+    if(!entry || out.length >= MAX_DROPPED_FILES) return;
+    if(entry.isFile){
+      if(!CHECKLIST_RE.test(entry.name)) return;
+      const f = await entryToFile(entry);
+      if(f) out.push(f);
+      return;
+    }
+    if(entry.isDirectory){
+      if(depth >= MAX_DIR_DEPTH) return;
+      let children;
+      try{
+        children = await readAllDirectoryEntries(entry.createReader());
+      }catch(err){
+        console.error("Could not read dropped folder", entry.fullPath, err);
+        return;
+      }
+      for(const child of children){
+        if(out.length >= MAX_DROPPED_FILES) return;
+        await walkEntry(child, out, depth + 1);
+      }
+    }
+  }
+
+  // Turns a drop into a flat file list, expanding any folders in it.
+  //
+  // The entries MUST be pulled off dataTransfer.items synchronously — the
+  // item list is emptied as soon as the drop handler returns, so grabbing
+  // them after the first await yields nothing. Hence the two-phase shape:
+  // collect entries first, then walk them.
+  async function collectDroppedFiles(dataTransfer){
+    const plainFiles = Array.from(dataTransfer.files || []);
+    const items = dataTransfer.items;
+    // Fall back to the plain file list whenever the tree can't be walked —
+    // that is exactly what the app did before folders were supported, so
+    // dropping loose files keeps working on browsers without the entry API.
+    if(!items || !items.length) return plainFiles;
+
+    // Feature-detect on the item, not on DataTransferItem.prototype: the
+    // item is what actually gets called, and checking the global constructor
+    // wrongly reports "unsupported" anywhere the prototype isn't exposed the
+    // way you'd expect.
+    const entries = [];
+    let sawDirectory = false;
+    for(let i = 0; i < items.length; i++){
+      const item = items[i];
+      if(!item || item.kind !== "file") continue;
+      const getEntry = typeof item.webkitGetAsEntry === "function" ? item.webkitGetAsEntry
+                     : typeof item.getAsEntry === "function" ? item.getAsEntry
+                     : null;
+      if(!getEntry) continue;
+      let entry = null;
+      try{ entry = getEntry.call(item); }
+      catch(err){ console.error("Could not read a dropped item", err); }
+      if(entry){
+        if(entry.isDirectory) sawDirectory = true;
+        entries.push(entry);
+      }
+    }
+    if(!entries.length) return plainFiles;
+    // A plain multi-file drop needs no walking, and routing it through the
+    // entry API would only be slower.
+    if(!sawDirectory) return plainFiles;
+
+    const out = [];
+    for(const entry of entries) await walkEntry(entry, out, 0);
+    return out;
+  }
+
   function handleFiles(fileList){
-    const files = Array.from(fileList).filter(f => /\.(ckl|cklb|xml)$/i.test(f.name));
+    const files = Array.from(fileList).filter(f => CHECKLIST_RE.test(f.name));
     if(files.length === 0) return;
     let remaining = files.length;
     const total = files.length;
@@ -1954,6 +2095,10 @@
     // blocking alert() per file — dropping a folder of 50 checklists where
     // several are unreadable used to mean dismissing 50 dialogs in a row.
     const problems = [];
+    // Tracked separately from `problems` so the end-of-import summary can
+    // tell the user "these were skipped as duplicates" instead of lumping
+    // them in with actual parse/read failures.
+    const duplicates = [];
     bgLoaderStart(total);
 
     // Runs whether the file parsed, failed to parse, or failed to read at
@@ -1967,11 +2112,18 @@
       bgLoaderEnd();
       if(bladeStack.length === 0){ goMenu("dashboard"); }
       else { updateShellChrome(); refreshDependentBlades(()=>true); }
+      const msgParts = [];
       if(problems.length){
         const shown = problems.slice(0, 10).join("\n");
         const more = problems.length > 10 ? `\n…and ${problems.length - 10} more.` : "";
-        alert(`${problems.length} of ${total} file${total>1?"s":""} could not be loaded:\n\n${shown}${more}`);
+        msgParts.push(`${problems.length} of ${total} file${total>1?"s":""} could not be loaded:\n\n${shown}${more}`);
       }
+      if(duplicates.length){
+        const shown = duplicates.slice(0, 10).join("\n");
+        const more = duplicates.length > 10 ? `\n…and ${duplicates.length - 10} more.` : "";
+        msgParts.push(`${duplicates.length} file${duplicates.length>1?"s":""} already loaded — skipped:\n\n${shown}${more}`);
+      }
+      if(msgParts.length) alert(msgParts.join("\n\n"));
     };
 
     // Files are read a few at a time rather than all at once. Kicking off one
@@ -1992,10 +2144,22 @@
       const reader = new FileReader();
       reader.onload = e=>{
         try{
+          const text = e.target.result;
+          const hash = hashFileText(text);
+          if(importedFileHashes.has(hash)){
+            duplicates.push(`${f.name} — identical to a file already loaded`);
+            resolve();
+            return;
+          }
           const isCklb = /\.cklb$/i.test(f.name);
-          const newAssets = isCklb ? parseCKLB(e.target.result, f.name) : parseCKL(e.target.result, f.name);
+          const newAssets = isCklb ? parseCKLB(text, f.name) : parseCKL(text, f.name);
           if(!newAssets.length){
             problems.push(`${f.name} — parsed but contained no STIGs/rules`);
+          }else{
+            // Tag before adding so a removal later can find its way back to
+            // this hash and decrement the live count (see removeAsset).
+            newAssets.forEach(a => { a.sourceHash = hash; });
+            importedFileHashes.set(hash, (importedFileHashes.get(hash)||0) + newAssets.length);
           }
           addAssets(newAssets);
         }catch(err){
@@ -2038,6 +2202,15 @@
 
   function removeAsset(id){
     closeColMenu(); closeColFilterMenu(); hideTooltip();
+    // Freeing the hash here (rather than only ever growing the map) means a
+    // file the user deliberately removes can be re-imported afterward
+    // instead of being silently treated as a duplicate forever.
+    const removed = assets.find(a => a.id === id);
+    if(removed && removed.sourceHash){
+      const n = (importedFileHashes.get(removed.sourceHash)||0) - 1;
+      if(n <= 0) importedFileHashes.delete(removed.sourceHash);
+      else importedFileHashes.set(removed.sourceHash, n);
+    }
     setAssets(assets.filter(a => a.id !== id));
     const blade = newBlade("import", "Import", {});
     blade.__menu = "import";
@@ -2049,10 +2222,28 @@
   // ---- Drag & drop / file input wiring ----
   const dropzone = $("#dropzone");
   const fileInput = $("#fileInput");
+  const folderInput = $("#folderInput");
   $("#pickBtn").addEventListener("click", ()=> fileInput.click());
   $("#addMoreBtn").addEventListener("click", ()=> fileInput.click());
+  // The dropzone background opens the file picker, but the folder button
+  // sits inside it — so that click must not fall through to the file picker.
+  const pickFolderBtn = $("#pickFolderBtn");
+  if(pickFolderBtn) pickFolderBtn.addEventListener("click", e => { e.stopPropagation(); folderInput.click(); });
   dropzone.addEventListener("click", ()=> fileInput.click());
   fileInput.addEventListener("change", e => { handleFiles(e.target.files); fileInput.value = ""; });
+  // A folder pick reports every file in the tree; handleFiles filters to
+  // checklists, so tell the user when a folder held none rather than
+  // appearing to do nothing.
+  folderInput.addEventListener("change", e => {
+    const picked = Array.from(e.target.files || []);
+    folderInput.value = "";
+    if(!picked.length) return;
+    if(!picked.some(f => CHECKLIST_RE.test(f.name))){
+      alert("No .ckl or .cklb files were found in that folder.");
+      return;
+    }
+    handleFiles(picked);
+  });
 
   const acrCsvInput = $("#acrCsvInput");
   acrCsvInput.addEventListener("change", e=>{
@@ -2088,7 +2279,21 @@
   });
   document.body.addEventListener("drop", e=>{
     e.preventDefault();
-    if(e.dataTransfer && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+    if(!e.dataTransfer) return;
+    const hadPlainFiles = e.dataTransfer.files && e.dataTransfer.files.length > 0;
+    // Folders arrive with no entries in dataTransfer.files, so the walk has
+    // to run before we can tell whether the drop contained anything usable.
+    collectDroppedFiles(e.dataTransfer).then(files=>{
+      if(files.length){ handleFiles(files); return; }
+      // A folder that turned out to hold no checklists would otherwise look
+      // like the drop was ignored entirely.
+      if(!hadPlainFiles){
+        alert("No .ckl or .cklb files were found in what you dropped.");
+      }
+    }).catch(err=>{
+      console.error("Could not read the dropped items", err);
+      alert("Could not read what you dropped. Try selecting the files directly.");
+    });
   });
 
   // ==================================================================
@@ -2306,29 +2511,50 @@
   }
 
   // Requirement 8 — AES: ACR combined with severity-weighted exposure from open/unreviewed findings, 0-1000
+  //
+  // Recalibrated 2026-07-29. The original curve read as far too forgiving in
+  // practice: a host at 75% compliant (a meaningfully bad posture — a
+  // quarter of applicable rules failing) landed around AES 240-320, deep in
+  // the "OK"/"Low" bands, and even a 0%-compliant host topped out around 730
+  // ("High"), never "Critical". Three changes fix that:
+  //
+  //  1. Density now divides by APPLICABLE rules (open+nr+naf) instead of
+  //     every rule including Not_Applicable ones. N/A rate varies by host
+  //     purely on platform/role, not security posture, so dividing by the
+  //     full rule count let two hosts at identical real compliance produce
+  //     different AES just because one had more N/A rules than the other.
+  //     This also makes AES's density directly comparable to compliancePct(),
+  //     which already excludes N/A from both sides of its ratio.
+  //  2. CAT I findings are weighted much more heavily relative to CAT II/III
+  //     (15/5/2 open, 5/1.5/0.5 not-reviewed, vs. the old 10/6/3 and 4/2/1) —
+  //     the old weights left barely any daylight between an all-CAT-I host
+  //     and a typical CAT-II-heavy one at the same compliance %.
+  //  3. The saturation divisor dropped from 2.5 to 1.2, steepening the
+  //     curve's early response — same asymptotic taper toward 1000, but it
+  //     no longer takes near-total non-compliance to leave the "OK" band.
   function computeAES(host, acrValue){
-    let raw = 0, total = 0;
+    let raw = 0, applicable = 0;
     (host.stigs||[]).forEach(a=>{
       a.vulns.forEach(v=>{
-        total++;
+        if(v.status === "Not_Applicable") return; // excluded from density, same as compliancePct()
+        applicable++;
         if(v.status === "Open"){
-          raw += v.severity==="high" ? 10 : v.severity==="medium" ? 6 : 3;
+          raw += v.severity==="high" ? 15 : v.severity==="medium" ? 5 : 2;
         } else if(v.status === "Not_Reviewed"){
-          raw += v.severity==="high" ? 4 : v.severity==="medium" ? 2 : 1;
+          raw += v.severity==="high" ? 5 : v.severity==="medium" ? 1.5 : 0.5;
         }
       });
     });
-    // Feed the saturating curve a per-rule severity-weighted density
-    // (roughly 0-10), not the raw point total — raw scales with how many
-    // rules the host has (more applied STIGs = proportionally more open-
-    // finding points at the *same* compliance level), so using it directly
-    // saturated exposureScore at ~1000 for almost any host with more than
-    // ~20-30 weighted open findings, which is nearly every multi-hundred-
-    // rule asset regardless of actual compliance. Normalizing by rule count
+    // Feed the saturating curve a per-rule severity-weighted density, not
+    // the raw point total — raw scales with how many rules the host has
+    // (more applied STIGs = proportionally more open-finding points at the
+    // *same* compliance level), so using it directly would saturate
+    // exposureScore at ~1000 for almost any host with enough applied STIGs
+    // regardless of actual compliance. Normalizing by applicable rule count
     // keeps AES sensitive to remediation instead of being a pure function
-    // of ACR once a host crosses that tiny threshold.
-    const density = total ? raw / total : 0;
-    const exposureScore = 1000 * (1 - Math.exp(-density/2.5));
+    // of ACR once a host crosses a tiny threshold.
+    const density = applicable ? raw / applicable : 0;
+    const exposureScore = 1000 * (1 - Math.exp(-density/1.2));
     const multiplier = 0.3 + 0.07*acrValue;
     const aes = Math.round(Math.min(1000, exposureScore*multiplier));
     return {aes, raw, density:Math.round(density*100)/100, exposureScore:Math.round(exposureScore)};
@@ -2556,23 +2782,25 @@
 
     return days.map(asOfDay=>{
       const asOfDayTime = asOfDay.getTime();
-      const hostScores = [];
+      const hostScores = []; // [aes, acr] pairs — see weightedCES()
       byHost.forEach((raw, hostKey)=>{
         const byStig = latestStigsAsOfDay(raw, asOfDayTime);
         if(!byStig.size) return; // this host has no scan known as of this date yet
         const hostSnapshot = {hostKey, hostName: raw[0].hostName||hostKey, hostIp: raw[0].hostIp, role: raw[0].role, stigs: Array.from(byStig.values())};
         const acrInfo = getACR(hostKey, hostSnapshot);
         const aesInfo = computeAES(hostSnapshot, acrInfo.value);
-        hostScores.push(aesInfo.aes);
+        hostScores.push([aesInfo.aes, acrInfo.value]);
       });
-      const ces = hostScores.length ? Math.round(hostScores.reduce((s,v)=>s+v,0)/hostScores.length) : 0;
+      // Same ACR-weighted formula as computeCES(), so a reconstructed past
+      // point and today's live CES are never computed two different ways.
+      const ces = weightedCES(hostScores);
       return {date: asOfDay, aes: ces, hostCount: hostScores.length};
     });
   }
 
   function cesTrendPanelHtml(){
     const points = cesHistory();
-    const tip = "Reconstructs the fleet-wide CES (average AES across all assets) as of each recorded scan date, using the most recent per-host, per-STIG data known at that point in time. Requires dated scans — points reflect only hosts with at least one dated scan by that date, so early points may cover fewer assets than the current total.";
+    const tip = "Reconstructs the fleet-wide CES (ACR-weighted average AES across all assets) as of each recorded scan date, using the most recent per-host, per-STIG data known at that point in time. Requires dated scans — points reflect only hosts with at least one dated scan by that date, so early points may cover fewer assets than the current total.";
     const head = `<div class="head"><h3>CES Over Time</h3><span class="overall tooltip" data-tip="${esc(tip)}">what is this?</span></div>`;
     if(!points.length){
       return `<div class="trend-panel">${head}<div class="empty-note">No dated scans available yet to chart a fleet-wide trend.</div></div>`;
@@ -2748,12 +2976,29 @@
     </div>`;
   }
 
-  // CES — Composite Exposure Score: the average AES across every loaded
-  // asset, shown as a dash/speedometer-style gauge with fixed benchmark
-  // ticks at 300/500/700/900 and color bands matching the AES scale.
+  // CES — Composite Exposure Score: a fleet-wide rollup of every loaded
+  // asset's AES, shown as a dash/speedometer-style gauge with fixed
+  // benchmark ticks at 300/500/700/900 and color bands matching the AES
+  // scale.
+  //
+  // Weighted by ACR (2026-07-29), not a flat average. An unweighted mean
+  // treats a workstation and a domain controller as equally important votes
+  // — a fleet of 19 clean workstations (ACR ~4) and one badly exposed domain
+  // controller (ACR 10) would average out to a comfortable-looking score
+  // even though that one host is the actual risk. Weighting each host's AES
+  // by its ACR means the assets an org has already flagged as most critical
+  // move the composite score proportionally more than routine ones do.
+  //
+  // Shared by computeCES (current snapshot) and cesHistory (reconstructed
+  // past snapshots) so the two can't drift onto different formulas.
+  function weightedCES(pairs){ // [[aes, acr], ...]
+    if(!pairs.length) return 0;
+    let weightedSum = 0, weightTotal = 0;
+    pairs.forEach(([aes, acr])=>{ weightedSum += aes*acr; weightTotal += acr; });
+    return weightTotal ? Math.round(weightedSum/weightTotal) : 0;
+  }
   function computeCES(rows){
-    if(!rows.length) return 0;
-    return Math.round(rows.reduce((s,r)=>s+r.aes,0) / rows.length);
+    return weightedCES(rows.map(r=>[r.aes, r.acr]));
   }
 
   function cesGaugeSvg(ces){
@@ -2802,7 +3047,7 @@
   function cesPanelHtml(rows){
     const ces = computeCES(rows);
     return `<div class="ces-panel">
-      <div class="head"><h3>CES — Composite Exposure Score</h3><span class="overall tooltip" data-tip="CES is the average Asset Exposure Score (AES) across all loaded assets — a single dashboard-level readout of overall exposure, on the same 0–1000 scale and color bands as AES.">what is CES?</span></div>
+      <div class="head"><h3>CES — Composite Exposure Score</h3><span class="overall tooltip" data-tip="CES is the ACR-weighted average Asset Exposure Score (AES) across all loaded assets — each host's AES counts in proportion to its ACR, so your most critical assets move this score more than routine ones do. Same 0–1000 scale and color bands as AES.">what is CES?</span></div>
       <div class="ces-gauge-wrap">${cesGaugeSvg(ces)}</div>
     </div>`;
   }
@@ -3218,6 +3463,46 @@
     URL.revokeObjectURL(url);
   }
 
+  // Exports whatever the Assets table's current search/filter/sort has
+  // produced (blade._lastAssetRows, set by renderAssetsList — the same
+  // "export what you're looking at, not the whole fleet" behavior the
+  // Findings blade's export already has). Column set is a fixed superset of
+  // ASSET_COLS regardless of which columns happen to be toggled visible on
+  // screen, matching how exportCSV/exportAffectedAssetsCSV already export a
+  // comprehensive column set independent of the on-screen column picker.
+  function exportAssetRowsCSV(rows, label){
+    const out = [["Host Name","IP Address","Role","Operating System","ACR","AES","STIGs","Total Rules","Open","Not Reviewed","% Compliant","Last Scanned","History"]];
+    rows.forEach(r=> out.push([
+      r.host.hostName||"", r.host.hostIp||"", r.host.role||"", r.os||"",
+      r.acr, r.aes, r.host.stigs.length, r.total, r.open, r.nr, r.compliance,
+      (r.lastScannedInfo && r.lastScannedInfo.label) || "—", r.history
+    ]));
+    const csv = toCSV(out);
+    const blob = new Blob([csv], {type:"text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = label + "_assets.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Same idea for the STIGs table — exports blade._lastStigRows (set by
+  // renderStigsList), a fixed column set matching STIG_COLS.
+  function exportStigRowsCSV(rows, label){
+    const out = [["STIG Title","Version","Release Info","Host Count","Total Rules","Open","Not Reviewed","% Compliant"]];
+    rows.forEach(r=> out.push([
+      r.stigTitle||"Untitled STIG", r.stigVersion||"", r.releaseInfo||"",
+      r.hostCount, r.total, r.open, r.nr, r.compliance
+    ]));
+    const csv = toCSV(out);
+    const blob = new Blob([csv], {type:"text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = label + "_stigs.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function controlsHtml(bladeId, state, colDefs, prefKey, showGroupBtn){
     const groupBtn = showGroupBtn ? `<button type="button" class="group-btn ${state.grouped ? "grouped" : ""}" data-blade-id="${bladeId}" data-action="toggle-group">${state.grouped ? "Ungroup" : "Group"}</button>` : "";
     return `
@@ -3432,6 +3717,14 @@
       ${paginationBarHtml(blade, total, page, pageSize, totalPages, startIdx, endIdx)}`;
   }
 
+  // Sticky Group/Ungroup preference for the Findings blade, kept outside any
+  // one blade's state (same pattern as colPrefs above). Every drill from the
+  // Compliance blade — clicking AC-2, then SA-4, etc. — opens a brand-new
+  // Findings blade via newBlade(), which would otherwise reset "grouped" to
+  // false each time. Persisting it here means Group/Ungroup, once chosen,
+  // carries forward across drills instead of only lasting until the next one.
+  let findingsGroupedPref = false;
+
   // ---- Blade factory / navigation ----
   function newBlade(type, title, params){
     bladeSeq++;
@@ -3461,7 +3754,10 @@
       page: 1,
       pageSize: 20, // findings tables only — "all" shows every matching row
       dashboardTab: "assets",
-      grouped: false, // Findings blade only — groups rows by rule title + status
+      // Findings blade only — groups rows by rule title + status. Seeded
+      // from the sticky findingsGroupedPref (see above) rather than always
+      // starting false, so the choice survives a fresh drill from Compliance.
+      grouped: type === "findings" ? findingsGroupedPref : false,
       expandedFamilies: new Set() // Compliance blade only — which family rows are expanded in-place
     };
     return {id:"blade"+bladeSeq, type, title, params, state};
@@ -3602,8 +3898,9 @@
 
   function assetsControlsHtml(bladeId, state, defs){
     return `<div class="controls">
-      <input class="search-input" data-blade-id="${bladeId}" data-action="search" type="text" placeholder="Search host, IP, role..." value="${esc(state.search)}">
+      <input class="search-input" data-blade-id="${bladeId}" data-action="search" type="text" placeholder="Search..." value="${esc(state.search)}">
       <button type="button" class="colpicker-btn tooltip" data-action="upload-acr-csv" data-tip="Upload a CSV with columns: hostname, acr (1–10). Matching hosts' ACR will be overridden; unmatched hostnames and invalid values are reported after upload.">↑ ACR Overrides (CSV)</button>
+      <button class="export-btn" data-blade-id="${bladeId}" data-action="export-assets">↓ export CSV</button>
       ${colPickerHtml("assets", defs, bladeId, state)}
     </div>`;
   }
@@ -3829,7 +4126,8 @@
 
   function stigsControlsHtml(bladeId, state, defs){
     return `<div class="controls">
-      <input class="search-input" data-blade-id="${bladeId}" data-action="search" type="text" placeholder="Search STIG title, host, version..." value="${esc(state.search)}">
+      <input class="search-input" data-blade-id="${bladeId}" data-action="search" type="text" placeholder="Search..." value="${esc(state.search)}">
+      <button class="export-btn" data-blade-id="${bladeId}" data-action="export-stigs">↓ export CSV</button>
       ${colPickerHtml("stigs", defs, bladeId, state)}
     </div>`;
   }
@@ -3925,6 +4223,9 @@
         }).join("");
         return `<tr data-action="drill" data-blade-index="${bladeIndex}" data-type="assetDetail" data-title="${esc(r.host.hostName)}" data-hostkey="${esc(r.host.hostKey)}">${cells}</tr>`;
       }).join("");
+    // Export reads whatever the current search/filter/sort produced, same
+    // "export what's on screen" behavior as the Findings blade.
+    blade._lastAssetRows = rows;
     return `
       ${assetsControlsHtml(blade.id, blade.state, defs)}
       <div class="tablewrap"><table><thead><tr>${header}</tr></thead><tbody>${bodyRows}</tbody></table></div>
@@ -4084,7 +4385,18 @@
           // .slice() because complianceControlRows is memoized and
           // sortComplianceRows sorts in place — sorting the cached array
           // directly would mutate shared state.
-          const ctrlRows = sortComplianceRows(complianceControlRows(r.family).slice(), {sortKey:"control", sortDir:1}, "control");
+          //
+          // Sorted with the SAME sortKey/sortDir the user picked for the
+          // family table (blade.state), not a hardcoded control-code order —
+          // otherwise sorting by "% Compliant" reorders the family rows but
+          // leaves every expanded family's controls sitting in whatever
+          // order they happened to be built in. Control rows have no
+          // "family" field of their own, so when sortKey is "family" (the
+          // Family column) this falls through to sortComplianceRows' default
+          // case, which numeric-sorts on keyField ("control") instead —
+          // giving AC-2, AC-3, ... AC-10, AC-20 rather than lexicographic
+          // AC-1, AC-10, AC-2, AC-20, AC-3.
+          const ctrlRows = sortComplianceRows(complianceControlRows(r.family).slice(), blade.state, "control");
           const subRows = ctrlRows.map(c=>`
         <tr class="compliance-sub-row" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="${esc(c.control)} findings" data-preset-control="${esc(c.control)}">
           <td class="title"><span class="fam-code-wrap indent"><span class="fam-code">${esc(c.control)}</span><span class="fam-name">${c.hostCount} asset${c.hostCount===1?"":"s"}</span></span></td>
@@ -4110,7 +4422,7 @@
         <div class="head"><h3>RMF Control Family Coverage</h3><span class="overall tooltip" data-tip="${esc(COMPLIANCE_OVERLAP_TIP)}">how are these counted?</span></div>
         ${complianceFamilyGridHtml(blade.id, allRows)}
       </div>
-      ${complianceControlsHtml(blade.id, blade.state, "Search family code or name...")}
+      ${complianceControlsHtml(blade.id, blade.state, "Search...")}
       <div class="tablewrap"><table><thead><tr>${header}</tr></thead><tbody>${bodyRows}</tbody></table></div>
       <div class="count-note">showing ${rows.length} of ${allRows.length} control families — click a family to expand its controls, or a control to see its findings</div>`;
   }
@@ -4147,6 +4459,9 @@
         }).join("");
         return `<tr data-action="drill" data-blade-index="${bladeIndex}" data-type="stigDetail" data-title="${esc(r.stigTitle||r.fileName)}" data-stig-key="${esc(r.key)}">${cells}</tr>`;
       }).join("");
+    // Export reads whatever the current search/filter/sort produced, same
+    // "export what's on screen" behavior as the Findings blade.
+    blade._lastStigRows = rows;
     return `
       ${stigsControlsHtml(blade.id, blade.state, defs)}
       <div class="tablewrap"><table><thead><tr>${header}</tr></thead><tbody>${bodyRows}</tbody></table></div>
@@ -4932,6 +5247,9 @@
       if(blade){
         blade.state.grouped = !blade.state.grouped;
         blade.state.page = 1;
+        // Persist the choice so the next Findings blade opened from a
+        // Compliance drill (or anywhere else) starts in the same state.
+        if(blade.type === "findings") findingsGroupedPref = blade.state.grouped;
         refreshBlade(blade.id);
       }
       return;
@@ -4979,6 +5297,20 @@
     if(exportAssetsEl){
       const blade = bladeStack.find(b=>b.id===exportAssetsEl.dataset.bladeId);
       if(blade) exportAffectedAssetsCSV(blade._lastAffectedAssets||[], (blade.params.vuln && blade.params.vuln.vulnNum) || blade.title || "finding");
+      return;
+    }
+
+    const exportAssetRowsEl = e.target.closest('[data-action="export-assets"]');
+    if(exportAssetRowsEl){
+      const blade = bladeStack.find(b=>b.id===exportAssetRowsEl.dataset.bladeId);
+      if(blade) exportAssetRowsCSV(blade._lastAssetRows||[], (blade.title||"assets").replace(/[^a-z0-9]+/gi,"_").toLowerCase());
+      return;
+    }
+
+    const exportStigRowsEl = e.target.closest('[data-action="export-stigs"]');
+    if(exportStigRowsEl){
+      const blade = bladeStack.find(b=>b.id===exportStigRowsEl.dataset.bladeId);
+      if(blade) exportStigRowsCSV(blade._lastStigRows||[], (blade.title||"stigs").replace(/[^a-z0-9]+/gi,"_").toLowerCase());
       return;
     }
 
