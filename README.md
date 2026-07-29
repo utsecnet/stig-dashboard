@@ -79,7 +79,7 @@ Severity threshholds:
 
 ### Composite Exposure Score (CES)
 
-CES is our Key Performance Indicator (KPI) — a value represented over time. It is the ACR-weighted average of every asset's AES.
+`CES` is our Key Performance Indicator (KPI) — a value represented over time. It is the ACR-weighted average of every asset's AES.
 ```
 CES = Σ(AES × ACR) / Σ(ACR)
 ```
