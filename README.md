@@ -35,7 +35,7 @@ If you've used **Nessus / ACAS**, this will feel familiar: Nessus weights raw CV
 
 
 #### ACR Overrides
-Found on the Asset blade, this allows the user tooverride the default ACR score. **Use ACAS as the source of truth**. Requires a CSV in the following format:
+Found on the Asset blade, this allows the user to override the default ACR score. **Use ACAS as the source of truth**. Requires a CSV in the following format:
 
 ```
 hostname, acr
