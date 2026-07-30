@@ -68,6 +68,10 @@ function fakeEl(){
     appendChild(){}, removeChild(){}, insertBefore(){},
     querySelector(){return fakeEl();}, querySelectorAll(){return [];},
     click(){}, focus(){}, remove(){},
+    // Real elements that the app looks up by [data-action="search"] are
+    // <input>s, so the stub needs the input surface too — code that restores
+    // the caret after a re-render reads .value/.selectionStart.
+    value:"", selectionStart:0, selectionEnd:0,
   };
 }
 global.document = {
@@ -81,6 +85,22 @@ global.window = { addEventListener(){}, innerWidth:1024, innerHeight:768 };
 global.requestAnimationFrame = ()=>{};
 global.Blob = function(parts, opts){ this.parts = parts; this.type = opts && opts.type; };
 global.URL = { createObjectURL(){ return "blob:fake"; }, revokeObjectURL(){} };
+
+// Minimal IndexedDB stand-in. The app itself has no persistence anymore
+// (deliberately reverted — see purgeStalePersistedData() in the app body);
+// this only needs to support the one-time best-effort cleanup call that
+// deletes any database a since-removed earlier version may have left
+// behind. global.__idbDeleteCalls records what was asked to be deleted, so
+// tests can confirm the cleanup actually runs rather than being a no-op.
+global.__idbDeleteCalls = [];
+global.indexedDB = {
+  deleteDatabase(name){
+    global.__idbDeleteCalls.push(name);
+    const req = {};
+    setTimeout(()=>{ if(req.onsuccess) req.onsuccess(); }, 0);
+    return req;
+  }
+};
 `;
 
 // ---------------------------------------------------------------------
@@ -1877,6 +1897,348 @@ section("Import — duplicate CKL/CKLB detection");
 
   global.FileReader = savedFileReader;
   global.alert = savedAlert;
+}
+
+// ======================================================================
+// No local persistence, by design — and cleanup of anything left behind
+// by an earlier version that had it (and, briefly, a wipe button for
+// clearing it). Both were removed: persistence because IndexedDB is
+// plaintext on disk and readable by anyone with OS-level access to the
+// machine; the wipe button because once nothing persists, it's just a
+// confirmed reload — redundant with the browser's own reload.
+// purgeStalePersistedData() is a one-time best-effort cleanup so removing
+// the *code* doesn't leave real STIG data sitting on disk from anyone who
+// ran either of those earlier versions.
+// ======================================================================
+section("No local persistence — startup cleanup");
+{
+  check(typeof PERSISTENCE_AVAILABLE === "undefined", "the persistence-available flag from the reverted feature is gone entirely, not just unused");
+  check(typeof restorePersisted === "undefined" && typeof persistNow === "undefined" && typeof schedulePersist === "undefined",
+    "no persistence functions remain — a reload has no path back to old data");
+  check(typeof wipeAllData === "undefined", "the wipe button's handler is gone — nothing left to wire a button to");
+
+  // The app's own startup sequence (the tail of the IIFE) already ran for
+  // real, once, before any of this test file's code executed — the whole
+  // app body is evaluated as real code when the harness loads it (see
+  // extractAppBody() / how PREAMBLE+appBody+ASSERTIONS are assembled).
+  // Checking the call log BEFORE resetting it is what actually proves
+  // purgeStalePersistedData() is wired into startup, not just callable.
+  check(global.__idbDeleteCalls.length >= 1 && global.__idbDeleteCalls.includes("stigDashboardDB"),
+    \`startup itself (not this test) already asked to delete the stale database — proves the cleanup call is wired up, not just present as a function (log: \${JSON.stringify(global.__idbDeleteCalls)})\`);
+
+  // --- Startup cleanup, direct call ----------------------------------------
+  global.__idbDeleteCalls.length = 0;
+  purgeStalePersistedData();
+  check(global.__idbDeleteCalls.length === 1 && global.__idbDeleteCalls[0] === "stigDashboardDB",
+    \`calling it directly deletes the same, correctly-named database (asked to delete: \${JSON.stringify(global.__idbDeleteCalls)})\`);
+
+  // Must degrade silently, not throw, when indexedDB isn't available at all
+  // (older browsers, some private-browsing modes) — this runs unconditionally
+  // at every startup, so a throw here would break the whole app for those users.
+  const savedIndexedDB = global.indexedDB;
+  global.indexedDB = undefined;
+  let threw = false;
+  try{ purgeStalePersistedData(); } catch(err){ threw = true; }
+  check(!threw, "the startup cleanup does not throw when indexedDB isn't available at all");
+  global.indexedDB = savedIndexedDB;
+}
+
+// ======================================================================
+// Wipe button — fully removed
+//
+// The button lived in static HTML (not a render*() function); read the
+// source file directly to confirm no trace of it — markup, styling, or
+// wiring — is left behind, same pattern as the source-lint checks further up.
+// ======================================================================
+section("Wipe button — fully removed");
+{
+  const rawHtml = fs.readFileSync(${JSON.stringify(HTML_PATH)}, "utf8");
+  check(!rawHtml.includes('id="wipeBtn"'), "no wipeBtn element remains in the markup");
+  check(!rawHtml.includes("wipe-btn"), "no wipe-btn CSS class or rule remains");
+  check(!rawHtml.includes("wipeAllData"), "no reference to the removed wipeAllData handler remains anywhere in the file");
+}
+
+// ======================================================================
+// Derived-view memoization — caches must be shared, invalidated, and
+// never reordered by a sort.
+//
+// latestAssets / groupAssetsByHost / buildStigGroups / historyCountsByHost /
+// cesHistory are memoized on assetsVersion (cesHistory also on acrVersion).
+// That turned three classes of bug into live risks, all covered here:
+//   1. a cache that never invalidates -> blades show pre-import data;
+//   2. a cache that never HITS -> the optimization silently does nothing;
+//   3. an in-place .sort() on a cached array -> the sort reorders the cache
+//      itself, so unrelated views inherit whatever the last table was sorted
+//      by. This exact bug already shipped once on the Compliance blade.
+// ======================================================================
+section("Derived-view memoization — sharing, invalidation, sort safety");
+{
+  // --- caches actually hit ---
+  check(latestAssets() === latestAssets(), "latestAssets() returns the identical cached array on a repeat call");
+  check(groupAssetsByHost() === groupAssetsByHost(), "groupAssetsByHost() is cached");
+  check(buildStigGroups() === buildStigGroups(), "buildStigGroups() is cached");
+  check(historyCountsByHost() === historyCountsByHost(), "historyCountsByHost() is cached");
+  check(cesHistory() === cesHistory(), "cesHistory() is cached");
+
+  // --- an in-place sort must not reorder the cache ---
+  const stigOrderBefore = buildStigGroups().map(g=>g.key).join("|");
+  const sBlade = newBlade("stigs", "STIGs", {});
+  sBlade.state.sortKey = "open"; sBlade.state.sortDir = -1;
+  renderStigsList(sBlade, 0);
+  check(buildStigGroups().map(g=>g.key).join("|") === stigOrderBefore,
+    "sorting the STIGs table does not reorder the cached buildStigGroups() array");
+
+  const hostOrderBefore = groupAssetsByHost().map(h=>h.hostKey).join("|");
+  const aBlade = newBlade("assets", "Assets", {});
+  aBlade.state.sortKey = "aes"; aBlade.state.sortDir = -1;
+  renderAssetsList(aBlade, 0);
+  check(groupAssetsByHost().map(h=>h.hostKey).join("|") === hostOrderBefore,
+    "sorting the Assets table does not reorder the cached groupAssetsByHost() array");
+
+  const latestOrderBefore = latestAssets().map(a=>a.id).join("|");
+  const iBlade = newBlade("import", "Import", {});
+  iBlade.state.sortKey = "host"; iBlade.state.sortDir = -1;
+  renderImport(iBlade);
+  check(latestAssets().map(a=>a.id).join("|") === latestOrderBefore,
+    "sorting the Import table does not reorder the cached latestAssets() array");
+
+  // --- the direct contract: no sort helper may mutate its argument ---
+  //
+  // The blade-level checks above only catch this where the array handed to
+  // the sorter IS the cached one. buildAssetRows(), for instance, maps into a
+  // fresh array, so sortAssetRows could mutate its input without any cache
+  // visibly reordering — until some future caller passes a cached array
+  // straight in. Assert the property itself, not just today's symptom.
+  {
+    const sorters = [
+      ["sortAssetRows", sortAssetRows, buildAssetRows(groupAssetsByHost()), {sortKey:"aes", sortDir:-1}],
+      ["sortStigRows", sortStigRows, buildStigGroups(), {sortKey:"open", sortDir:-1}],
+      ["sortComplianceRows", sortComplianceRows, complianceFamilyRows(), {sortKey:"open", sortDir:-1}],
+      ["sortImportRows", sortImportRows, assets.slice(), {sortKey:"host", sortDir:-1}]
+    ];
+    sorters.forEach(([name, fn, arr, state])=>{
+      // Only run where there's enough data for order to be observable.
+      if(arr.length < 2) return;
+      const snapshot = arr.slice();
+      const result = fn(arr, state);
+      let unchanged = arr.length === snapshot.length;
+      for(let i = 0; unchanged && i < arr.length; i++) if(arr[i] !== snapshot[i]) unchanged = false;
+      check(unchanged, name + "() does not reorder the array it was given (it sorts a copy)");
+      check(result !== arr, name + "() returns a new array, not its argument");
+      // ...and it genuinely sorted that copy, rather than "not mutating" by
+      // doing nothing at all.
+      let differs = false;
+      for(let i = 0; i < result.length; i++) if(result[i] !== snapshot[i]) { differs = true; break; }
+      check(differs, name + "() actually reordered its output (the copy really was sorted)");
+    });
+  }
+
+  // --- and the sort still actually sorts ---
+  function stigOpens(dir){
+    const b = newBlade("stigs", "STIGs", {});
+    b.state.sortKey = "open"; b.state.sortDir = dir;
+    renderStigsList(b, 0);
+    return b._lastStigRows.map(r=>r.open);
+  }
+  const ascOpens = stigOpens(1), descOpens = stigOpens(-1);
+  check(ascOpens.every((v,i)=> i===0 || ascOpens[i-1] <= v), "STIGs sorted ascending really is ascending (sorting a copy didn't break sorting)");
+  check(descOpens.every((v,i)=> i===0 || descOpens[i-1] >= v), "STIGs sorted descending really is descending");
+  check(JSON.stringify(ascOpens) !== JSON.stringify(descOpens) || ascOpens.length <= 1,
+    "ascending and descending actually differ");
+
+  // --- invalidation: a new import must be visible everywhere ---
+  const nLatest = latestAssets().length, nHosts = groupAssetsByHost().length, nStigs = buildStigGroups().length;
+  const prevCounts = historyCountsByHost();
+  addAssets(parseCKLB(JSON.stringify({
+    target_data:{host_name:"__memo_probe_host__"},
+    stigs:[{display_name:"__memo_probe_stig__", rules:[{rule_id:"r1", status:"Open", severity:"high"}]}]
+  }), "__memo_probe__.cklb"));
+  check(latestAssets().length === nLatest + 1, \`importing invalidates latestAssets() (\${latestAssets().length} == \${nLatest + 1})\`);
+  check(groupAssetsByHost().length === nHosts + 1, "importing invalidates groupAssetsByHost()");
+  check(buildStigGroups().length === nStigs + 1, "importing invalidates buildStigGroups()");
+  check(historyCountsByHost() !== prevCounts, "importing invalidates historyCountsByHost()");
+
+  // --- cesHistory also keys off ACR, not just assets ---
+  const cesBefore = cesHistory();
+  const probeHost = groupAssetsByHost()[0].hostKey;
+  const hadOverride = acrOverrides.has(probeHost);
+  const prevOverride = acrOverrides.get(probeHost);
+  acrOverrides.set(probeHost, acrOverrides.get(probeHost) === 10 ? 1 : 10);
+  bumpAcrVersion();
+  check(cesHistory() !== cesBefore, "editing an ACR override invalidates cesHistory() (it is ACR-weighted, so it must)");
+  if(hadOverride) acrOverrides.set(probeHost, prevOverride); else acrOverrides.delete(probeHost);
+  bumpAcrVersion();
+}
+
+// ======================================================================
+// Control-number lookup — the joined string is cached, not just the array
+//
+// Sorting Findings by Control called controlNumbersForCciField() twice per
+// comparison, and the search filter called it once per finding per
+// keystroke. Only the parsed array was cached, so every one of those calls
+// re-ran Array.join — ~314ms for a single Control sort on a 2,550-file
+// fleet. The cached string must stay byte-identical to a fresh join.
+// ======================================================================
+section("Control-number lookup — joined-string cache");
+{
+  const samples = allVulns.slice(0, 3000);
+  let mismatches = 0;
+  samples.forEach(v=>{
+    if(controlNumbersForCciField(v.cci) !== controlsForCciField(v.cci).join(", ")) mismatches++;
+  });
+  check(mismatches === 0, \`the cached joined control string equals a fresh join for every sampled finding (\${mismatches} mismatch(es))\`);
+
+  // Correctness alone can't tell a cached join from an uncached one, so prove
+  // the cache actually populates and is reused — otherwise this whole section
+  // would still pass with the optimization removed.
+  const probeCci = "CCI-000048";
+  _controlStrCache.delete(probeCci);
+  const sizeBefore = _controlStrCache.size;
+  const firstCall = controlNumbersForCciField(probeCci);
+  check(_controlStrCache.size === sizeBefore + 1,
+    "the first lookup of a cci field stores its joined string in the cache");
+  check(_controlStrCache.get(probeCci) === firstCall,
+    "what's cached is exactly what the function returned");
+  // A repeat lookup must come from the cache, not be recomputed: poison the
+  // cache entry and check the poisoned value comes back.
+  _controlStrCache.set(probeCci, "__from_cache__");
+  check(controlNumbersForCciField(probeCci) === "__from_cache__",
+    "a repeat lookup is served from the cache instead of re-running Array.join");
+  _controlStrCache.delete(probeCci);
+
+  // Same value on a repeat call, and correct for the empty/garbage cases.
+  check(controlNumbersForCciField("CCI-000048") === controlNumbersForCciField("CCI-000048"), "repeat lookups agree");
+  check(controlNumbersForCciField("") === "", "no CCIs -> empty string");
+  check(controlNumbersForCciField("not-a-cci") === "", "unrecognized CCI text -> empty string");
+  check(controlNumbersForCciField(undefined) === "", "undefined cci field -> empty string, not a crash");
+  // A cache keyed on untrusted file content must be bounded.
+  check(typeof CONTROL_CACHE_MAX === "number" && CONTROL_CACHE_MAX > 0,
+    "the control caches are capped, so a hostile file can't grow them without bound");
+}
+
+// ======================================================================
+// computeStats is walked once per render, not twice
+//
+// complianceBlockHtml computed stats and then called complianceBarsHtml,
+// which computed the very same stats again — two full passes over every
+// finding on screen, on every keystroke. complianceBarsHtml now accepts the
+// already-computed result. The rendered markup must be identical either way.
+// ======================================================================
+section("computeStats — shared, not recomputed");
+{
+  const computed = computeStats(allVulns);
+  check(complianceBarsHtml(allVulns) === complianceBarsHtml(allVulns, computed),
+    "complianceBarsHtml renders identical markup whether it computes stats itself or is handed them");
+
+  // Identical output can't distinguish "used the precomputed stats" from
+  // "ignored them and recomputed the same numbers" — so hand it a doctored
+  // stats object and require the rendered figure to follow it. Only the
+  // "N% closed overall" figure is derived straight from stats (the CAT rows
+  // render percentages off bySev), so that's what's asserted on, and the
+  // target is chosen to be guaranteed different from the real value.
+  const realPct = compliancePct(computed.stats.Open, computed.stats.Not_Reviewed, computed.stats.NotAFinding);
+  const targetPct = realPct === 100 ? 0 : 100;
+  const doctored = {
+    bySev: computed.bySev,
+    stats: targetPct === 100
+      ? {Open:0, Not_Reviewed:0, NotAFinding:1, Not_Applicable:0}
+      : {Open:1, Not_Reviewed:0, NotAFinding:0, Not_Applicable:0}
+  };
+  const doctoredHtml = complianceBarsHtml(allVulns, doctored);
+  check(doctoredHtml.includes(targetPct + "% closed overall"),
+    \`complianceBarsHtml uses the stats it was handed rather than recomputing them (expected \${targetPct}% from the doctored stats, real value is \${realPct}%)\`);
+  check(doctoredHtml !== complianceBarsHtml(allVulns),
+    "handing in different stats produces different markup — proof the precomputed path is actually taken");
+
+  // Passing a precomputed result must not be a way to smuggle in wrong
+  // numbers silently: the shape it expects is exactly computeStats's.
+  check(computed && computed.stats && computed.bySev, "computeStats returns both stats and bySev, the two things complianceBarsHtml needs");
+
+  // And the numbers still reconcile with a hand tally.
+  let open = 0;
+  allVulns.forEach(v=>{ if(v.status === "Open") open++; });
+  check(computed.stats.Open === open, \`computeStats' Open total matches a manual tally (\${computed.stats.Open} == \${open})\`);
+}
+
+// ======================================================================
+// esc() — only null/undefined become empty
+//
+// esc() used (s||"") which also swallowed the number 0 and false, so any
+// numeric cell rendered through it would have shown blank.
+// ======================================================================
+section("esc() — falsy handling");
+{
+  check(esc(0) === "0", \`esc(0) renders "0", not blank (got \${JSON.stringify(esc(0))})\`);
+  check(esc(false) === "false", "esc(false) renders \\"false\\", not blank");
+  check(esc(null) === "" && esc(undefined) === "", "esc(null)/esc(undefined) are still empty");
+  check(esc("") === "", "esc(\\"\\") is empty");
+  check(esc('<b>&"x') === "&lt;b&gt;&amp;&quot;x", "esc still escapes every HTML-significant character");
+}
+
+// ======================================================================
+// ACR override CSV bumps the ACR version once per file, not per row
+// ======================================================================
+section("ACR override CSV — one cache invalidation per file");
+{
+  const hostKey = groupAssetsByHost()[0].hostKey;
+  const hostName = groupAssetsByHost()[0].hostName;
+  const before = acrVersion;
+  const res = applyAcrOverridesCSV("hostname,acr\\n" + hostName + ",7\\n" + hostName + ",8\\n" + hostName + ",9\\n");
+  check(res.applied === 3, \`all three rows applied (\${res.applied})\`);
+  check(acrVersion === before + 1, \`three applied rows bump the ACR version exactly once, not three times (\${acrVersion - before})\`);
+  check(acrOverrides.get(hostKey) === 9, "the last row still wins");
+
+  // A file that changes nothing must not invalidate anything.
+  const before2 = acrVersion;
+  const res2 = applyAcrOverridesCSV("hostname,acr\\n__no_such_host__,5\\n");
+  check(res2.applied === 0 && res2.notFound.length === 1, "an all-unmatched file applies nothing and reports it");
+  check(acrVersion === before2, "a file that applied nothing does not invalidate the ACR caches at all");
+  acrOverrides.delete(hostKey);
+  bumpAcrVersion();
+}
+
+// ======================================================================
+// Search input is debounced
+//
+// The findings filter costs ~70ms on a large fleet and used to run on every
+// keystroke. It is now debounced, EXCEPT when the box is cleared, which
+// applies immediately so erasing a search snaps back.
+// ======================================================================
+section("Search input — debounce");
+{
+  const appSrc = fs.readFileSync(${JSON.stringify(HTML_PATH)}, "utf8");
+  check(/SEARCH_DEBOUNCE_MS\\s*=\\s*\\d+/.test(appSrc), "a search debounce interval is defined");
+  check(/searchDebounceTimer/.test(appSrc) && /clearTimeout\\(searchDebounceTimer\\)/.test(appSrc),
+    "consecutive keystrokes cancel the pending re-render instead of queueing one each");
+  check(/if\\(value === ""\\)\\{[^}]*applySearch/.test(appSrc),
+    "clearing the search box bypasses the debounce and applies immediately");
+  check(typeof applySearch === "function", "the debounced work is factored into applySearch()");
+
+  // applySearch must still do the whole job when it does run.
+  const b = newBlade("findings", "Findings", {});
+  bladeStack.push(b);
+  // Page reset: park the blade on a later page, then search for something
+  // BROAD. Two things would otherwise mask a missing reset — newBlade()
+  // already starts at page 1, and renderFindingsList clamps an out-of-range
+  // page down to the last one. With a term matching hundreds of pages, page 7
+  // stays perfectly valid, so it survives unless applySearch resets it.
+  const broad = "a";
+  const broadMatches = filterVulns(decoratedFindings(), Object.assign({}, b.state, {search:broad}));
+  check(broadMatches.length > 20 * 7, \`the broad search term matches enough findings for page 7 to be valid (\${broadMatches.length} findings)\`);
+  b.state.page = 7;
+  applySearch(b.id, broad);
+  check(b.state.page === 1, "applySearch resets to page 1 — otherwise a search run from a later page lands the user deep in the new results");
+
+  applySearch(b.id, "zzzz_no_such_finding_zzzz");
+  check(b.state.search === "zzzz_no_such_finding_zzzz", "applySearch stores the term on the blade");
+  check(b._lastVulns && b._lastVulns.length === 0, "applySearch actually re-filtered — no finding matches that term");
+  applySearch(b.id, "");
+  // Compared against the CURRENT decorated set, not the allVulns captured at
+  // the top of this file — the memoization section above imports a probe
+  // asset, so that older count is deliberately stale by now.
+  check(b._lastVulns.length === decoratedFindings().length,
+    \`clearing the search restores the full set (\${b._lastVulns.length} == \${decoratedFindings().length})\`);
+  bladeStack.splice(bladeStack.indexOf(b), 1);
 }
 
 console.log(\`\\n\${passes} passed, \${failures} failed.\`);

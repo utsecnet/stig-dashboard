@@ -4,9 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CKL Dashboard</title>
-<!-- Favicon: a rule card showing stacked CAT I/II/III severity bars (the
-     same red/orange/yellow meter language used throughout the dashboard)
-     with the ledger bar's green "live" status dot in the corner. -->
+<!-- Favicon -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgNjQgNjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPGRlZnM+CiAgICA8cmFkaWFsR3JhZGllbnQgaWQ9ImJnIiBjeD0iNTAlIiBjeT0iMTglIiByPSI5NSUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjMTcyOTMzODAiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI1NSUiIHN0b3AtY29sb3I9IiMwZTFhMjAiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMGEwZjEzIi8+CiAgICA8L3JhZGlhbEdyYWRpZW50PgogIDwvZGVmcz4KCiAgPCEtLSBhcHAtc2hlbGwgYmFja2Ryb3AgLS0+CiAgPHJlY3QgeD0iMSIgeT0iMSIgd2lkdGg9IjYyIiBoZWlnaHQ9IjYyIiByeD0iMTQiIGZpbGw9InVybCgjYmcpIiBzdHJva2U9IiMyMzMwMzkiIHN0cm9rZS13aWR0aD0iMS42Ii8+CgogIDwhLS0gcnVsZSBjYXJkLCBlY2hvZXMgdGhlIGFwcCdzIG93biBwYW5lbC1yYWlzZWQgY2FyZHMgLS0+CiAgPHJlY3QgeD0iMTIiIHk9IjEzIiB3aWR0aD0iNDAiIGhlaWdodD0iMzgiIHJ4PSI2IiBmaWxsPSIjMTYyMjJhIiBzdHJva2U9IiMzMjQ0NTAiIHN0cm9rZS13aWR0aD0iMS42Ii8+CgogIDwhLS0gQ0FUIEkgLyBJSSAvIElJSSBzZXZlcml0eSBiYXJzIOKAlCBzYW1lIGNvbG9yIGxhbmd1YWdlIGFzIHRoZSBhcHAncyBvd24gY29tcGxpYW5jZSBtZXRlcnMgLS0+CiAgPHJlY3QgeD0iMTgiIHk9IjIzIiB3aWR0aD0iMjYiIGhlaWdodD0iNiIgcng9IjIiIGZpbGw9IiNlNTQ4NGQiLz4KICA8cmVjdCB4PSIxOCIgeT0iMzIiIHdpZHRoPSIxOSIgaGVpZ2h0PSI2IiByeD0iMiIgZmlsbD0iI2UwOGEzYyIvPgogIDxyZWN0IHg9IjE4IiB5PSI0MSIgd2lkdGg9IjEyIiBoZWlnaHQ9IjYiIHJ4PSIyIiBmaWxsPSIjZDliZTRhIi8+CgogIDwhLS0gbGl2ZS1zY2FuIHN0YXR1cyBkb3QsIG1hdGNoaW5nIHRoZSBsZWRnZXIgYmFyJ3MgcHVsc2luZyBicmFuZCBkb3QgLS0+CiAgPGNpcmNsZSBjeD0iNDciIGN5PSIxNiIgcj0iNi41IiBmaWxsPSIjMGEwZjEzIi8+CiAgPGNpcmNsZSBjeD0iNDciIGN5PSIxNiIgcj0iNSIgZmlsbD0iIzM1Yzc3ZSIvPgo8L3N2Zz4K">
 <style>
   :root{
@@ -1479,6 +1477,10 @@
   // Unknown/unmapped CCIs (not in CCI_CONTROL_MAP) are silently skipped.
   // Memoized because the same cci strings repeat across every finding row
   // that shares a rule, and this runs inside render/sort/filter hot paths.
+  // Capped for the same reason as _internTable: the keys are raw cci fields
+  // out of untrusted checklist files, so an unbounded map is an unbounded
+  // memory commitment to whatever a file happens to contain.
+  const CONTROL_CACHE_MAX = 50000;
   const _controlCache = new Map();
   function controlsForCciField(cciField){
     const key = cciField || "";
@@ -1489,11 +1491,24 @@
       if(ctrl) ctrl.split(/\s+/).forEach(c=>seen.add(c));
     });
     const result = Array.from(seen).sort((a,b)=>a.localeCompare(b, undefined, {numeric:true}));
-    _controlCache.set(key, result);
+    if(_controlCache.size < CONTROL_CACHE_MAX) _controlCache.set(key, result);
     return result;
   }
+  // The JOINED string is cached too, not just the array it's built from.
+  // Sorting the Findings table by Control calls this twice per comparison —
+  // O(n log n) joins over the whole fleet — and the search filter calls it
+  // once per finding per keystroke. Caching only the array still re-joined
+  // every time: on a 2,550-file fleet that made a single Control sort take
+  // ~314ms and cost ~15ms per full filter pass, all of it rebuilding
+  // identical strings.
+  const _controlStrCache = new Map();
   function controlNumbersForCciField(cciField){
-    return controlsForCciField(cciField).join(", ");
+    const key = cciField || "";
+    const hit = _controlStrCache.get(key);
+    if(hit !== undefined) return hit;
+    const str = controlsForCciField(key).join(", ");
+    if(_controlStrCache.size < CONTROL_CACHE_MAX) _controlStrCache.set(key, str);
+    return str;
   }
 
   // NIST SP 800-53 control families. The first block is Rev 5's twenty
@@ -1594,7 +1609,7 @@
     {version:"2026.1", date:"July 22, 2026", notes:["Initial release"]},
     {version:"2026.1.01", date:"July 25, 2026", features:["Added CKL/CKLB file import indicator", "Added Vuln ID column to Findings tables", "Widened Findings blade for readability", "Added Last Scanned column to Assets table", "Asset Detail now shows last scanned date", "Added History column (checklist count) to Assets table", "Added AES Over Time chart to Asset Detail", "Tightened Asset Detail layout for space efficiency", "Added CES Over Time chart to top of Dashboard", "Combined compliance bars and tiles on Findings dashboard", "Made STIG ID column optional; reordered Findings columns", "Vuln ID column now hidden by default but still searchable", "Combined compliance bars and tiles on Findings blade", "Added Group/Ungroup button to Findings blade", "Renamed Source column to Host on Findings blade", "Added Affected Assets list to finding detail (grouped view)"], fixes:["Removed dead filter-chip code", "Cut redundant ACR recalculation on asset views", "Change log now lists newest release first", "Re-scanned STIGs no longer double-count in totals", "AES no longer saturates and ignores compliance changes", "AES vs Finding Count now counts only open/not-reviewed findings", "Escaped finding row IDs to block HTML injection", "Neutralized spreadsheet formula injection in CSV exports", "Unreadable files no longer stall the import loader", "Import errors now report once, not per file", "Restored blinking caret on awaiting-file prompt", "Sped up rendering for large asset fleets"]},
     {version:"2026.1.02", date:"July 27, 2026", features:["Added Control Number column to Findings tables", "Added Compliance blade summarizing RMF control families", "Compliance blade rows expand in place to show controls", "Compliance families shown as colored stat-panel grid"], fixes:["Trend chart dates angle instead of overlapping", "Changelog dates no longer drift with page load", "AES/CES history no longer splits one day into many", "Findings search is clearer, now finds Control Number", "% Compliant no longer counts Not Applicable rules"]},
-    {version:"2026.1.03", date:"July 29, 2026", features:["Drop a folder to import every checklist inside it", "Added Choose folder button to the import screen", "Added CSV export to the Assets blade", "Added CSV export to the STIGs blade"], fixes:["Removed duplicate status tiles from Compliance blade", "Compliance summary no longer touches the panel below", "Large imports use far less memory", "Faster CKL import; attributes read in one pass", "Files import in batches, keeping the page responsive", "Findings and Compliance blades render much faster", "Hostile checklist attribute names can't pollute parsing", "Search boxes all read plain \"Search...\" now", "Group setting persists across Compliance drill-ins", "Expanded controls now follow the family table's sort", "Control numbers sort numerically, not 20 before 3", "AES now reacts sooner to partial compliance", "CAT I findings weigh more heavily in AES", "AES no longer varies with a host's N/A rule count", "CES now weights each asset's AES by its ACR", "Re-uploading the same CKL/CKLB no longer duplicates it"]}
+    {version:"2026.1.03", date:"July 29, 2026", features:["Drop a folder to import every checklist inside it", "Added Choose folder button to the import screen", "Added CSV export to the Assets blade", "Added CSV export to the STIGs blade"], fixes:["Removed duplicate status tiles from Compliance blade", "Compliance summary no longer touches the panel below", "Large imports use far less memory", "Faster CKL import; attributes read in one pass", "Files import in batches, keeping the page responsive", "Findings and Compliance blades render much faster", "Hostile checklist attribute names can't pollute parsing", "Search boxes all read plain \"Search...\" now", "Group setting persists across Compliance drill-ins", "Expanded controls now follow the family table's sort", "Control numbers sort numerically, not 20 before 3", "AES now reacts sooner to partial compliance", "CAT I findings weigh more heavily in AES", "AES no longer varies with a host's N/A rule count", "CES now weights each asset's AES by its ACR", "Re-uploading the same CKL/CKLB no longer duplicates it", "Confirmed no loaded data is ever written to disk", "Startup now purges any previously saved local data", "Nav counts and dashboard no longer recompute every render", "CES Over Time chart is computed once, not per render", "Sorting by Control Number is over twice as fast", "Compliance totals now tallied once per render, not twice", "Search waits for you to stop typing before filtering", "Table sorts can no longer corrupt cached view data", "Numeric zero no longer renders blank in table cells", "ACR override CSV imports invalidate caches once, not per row", "Capped internal caches fed by untrusted checklist files"]}
   ];
 
   let assets = []; // {id, fileName, hostName, hostIp, stigTitle, stigVersion, releaseInfo, vulns:[...]}
@@ -1665,6 +1680,26 @@
   // caches that only depend on the findings themselves.
   let acrVersion = 0;
   function bumpAcrVersion(){ acrVersion++; }
+
+  // ---- No local persistence, by design -----------------------------------
+  // An earlier version of this app snapshotted loaded assets to IndexedDB so
+  // a reload wouldn't lose everything. That was reverted: STIG findings are
+  // sensitive, IndexedDB is plaintext on disk, and anyone with OS-level
+  // access to the machine (another local account, malware, a stolen laptop)
+  // could read it without ever touching the browser. "Nothing leaves this
+  // tab" now means nothing touches disk at all — reloading clears
+  // everything, same as before persistence was ever added.
+  //
+  // purgeStalePersistedData() is a one-time best-effort cleanup for anyone
+  // who ran that version and already has a leftover database sitting on
+  // disk — it deletes it so removing the *code* doesn't leave real STIG data
+  // behind with no code path left that ever reads or clears it.
+  function purgeStalePersistedData(){
+    try{
+      if(typeof indexedDB === "undefined" || !indexedDB.deleteDatabase) return;
+      indexedDB.deleteDatabase("stigDashboardDB");
+    }catch(err){ /* best-effort; nothing to recover from here */ }
+  }
 
   // Wraps a zero-argument derived-view function so it recomputes only when
   // its inputs have actually changed. These functions each rebuild tens of
@@ -1737,8 +1772,13 @@
   const $ = (sel, root) => (root||document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root||document).querySelectorAll(sel));
 
+  // Only null/undefined become the empty string. `(s||"")` also swallowed the
+  // number 0 and false — so any cell rendered via esc(someCount) would show
+  // blank instead of "0". No current call site passes a number, but this is a
+  // trap laid for the next one, and the fix costs nothing.
   function esc(s){
-    return (s||"").toString().replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+    if(s === null || s === undefined) return "";
+    return s.toString().replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
 
   // Collects every <STIG_DATA><VULN_ATTRIBUTE>/<ATTRIBUTE_DATA> pair under one
@@ -2483,9 +2523,12 @@
         continue;
       }
       acrOverrides.set(host.hostKey, acrNum);
-      bumpAcrVersion();
       applied++;
     }
+    // Bumped once for the whole file rather than once per row — every bump
+    // invalidates the ACR-dependent derived-view caches, so a 500-row
+    // override CSV was throwing them away 500 times over.
+    if(applied > 0) bumpAcrVersion();
     return {applied, notFound, invalid};
   }
 
@@ -2637,11 +2680,27 @@
   // timestamp) — every STIG scanned on or before that day, using whichever
   // scan of it is most recent by then. Shared by aesHistory (one host) and
   // cesHistory (every host) so the two can't drift out of sync.
+  // dayKey() builds a Date to truncate to midnight, so calling it per asset
+  // per day made the CES history O(days x assets) Date allocations — the bulk
+  // of that chart's cost. Cached per distinct scanDate string instead, the
+  // same way parseScanDate caches its parse.
+  const _dayKeyCache = new Map();
+  function dayKeyOfScanDate(scanDate){
+    if(!scanDate) return null;
+    const hit = _dayKeyCache.get(scanDate);
+    if(hit !== undefined) return hit;
+    const d = parseScanDate(scanDate);
+    const k = d ? dayKey(d) : null;
+    _dayKeyCache.set(scanDate, k);
+    return k;
+  }
+
   function latestStigsAsOfDay(raw, asOfDayTime){
     const byStig = new Map();
     raw.forEach(a=>{
       const d = parseScanDate(a.scanDate);
-      if(d && dayKey(d) > asOfDayTime) return; // scanned after this day — not yet known
+      const dk = dayKeyOfScanDate(a.scanDate);
+      if(dk !== null && dk > asOfDayTime) return; // scanned after this day — not yet known
       const key = a.stigTitle || a.fileName;
       const existing = byStig.get(key);
       if(!existing){ byStig.set(key, a); return; }
@@ -2767,9 +2826,13 @@
     return `<div class="trend-panel">${head}${aesTimelineSvg(points)}</div>`;
   }
 
-  function cesHistory(){
+  // Memoized on assets + ACR overrides: this reconstructs a fleet-wide
+  // snapshot for every distinct scan date, so it's O(days x hosts x stigs) —
+  // ~41ms on a 2,550-file fleet — and was recomputed on every single
+  // dashboard render, including a mere tab switch.
+  const cesHistory = memoOnVersion(assetsAndAcr, function(){
     const dayTimes = new Set();
-    assets.forEach(a=>{ const d = parseScanDate(a.scanDate); if(d) dayTimes.add(dayKey(d)); });
+    assets.forEach(a=>{ const k = dayKeyOfScanDate(a.scanDate); if(k !== null) dayTimes.add(k); });
     const days = Array.from(dayTimes).sort((a,b)=>a-b).map(t=>new Date(t));
     if(!days.length) return [];
 
@@ -2796,7 +2859,7 @@
       const ces = weightedCES(hostScores);
       return {date: asOfDay, aes: ces, hostCount: hostScores.length};
     });
-  }
+  });
 
   function cesTrendPanelHtml(){
     const points = cesHistory();
@@ -2885,8 +2948,13 @@
       </div>`;
   }
 
-  function complianceBarsHtml(vulns){
-    const {bySev, stats} = computeStats(vulns);
+  // `precomputed` is an optional already-computed computeStats() result for
+  // this exact vuln list. computeStats is a full pass that also builds a
+  // per-severity breakdown, and callers frequently need the same numbers for
+  // their own markup — without this, rendering the Findings blade walked all
+  // ~138k findings twice per keystroke purely to compute identical totals.
+  function complianceBarsHtml(vulns, precomputed){
+    const {bySev, stats} = precomputed || computeStats(vulns);
     const overallClosed = compliancePct(stats.Open, stats.Not_Reviewed, stats.NotAFinding);
     return `
       <div class="compliance-block">
@@ -2902,8 +2970,8 @@
   }
 
   function complianceBlockHtml(vulns){
-    const {stats} = computeStats(vulns);
-    return statusTilesHtml(stats) + complianceBarsHtml(vulns);
+    const computed = computeStats(vulns);
+    return statusTilesHtml(computed.stats) + complianceBarsHtml(vulns, computed);
   }
 
   // ==================================================================
@@ -3384,6 +3452,18 @@
     return `<button type="button" class="colpicker-btn" data-action="colpicker-toggle" data-blade-id="${bladeId}" data-pref-key="${prefKey}">Columns ▾</button>`;
   }
 
+  // NOTE on the search filter below: two alternatives to the plain
+  // toLowerCase() calls were tried and both measured WORSE on a 2,550-file
+  // fleet, so the straightforward version stands:
+  //   * A precomputed per-finding lowercase "search blob" was fast, but
+  //     stored a concatenated string per finding and pushed heap from 77MB to
+  //     189MB — the added GC pressure made unrelated renders slower.
+  //   * A memoized toLowerCase (Map from string -> lowercased) came out at
+  //     20.1ms vs 22.1ms for the raw call — within noise, because V8 already
+  //     has a fast path for lowercasing ASCII, and hashing a long rule title
+  //     for the cache lookup costs about what lowercasing it does.
+  // The genuinely expensive part of this filter was the control-number
+  // lookup, and that is cached at its source (controlNumbersForCciField).
   function filterVulns(vulns, state){
     let v = vulns.slice();
     if(state.colFilters.status.size) v = v.filter(x=>state.colFilters.status.has(x.status));
@@ -3778,7 +3858,13 @@
   // deliberately keeps reading the raw `assets` array directly (see
   // renderImport/handleFiles/removeAsset) so every individual imported file
   // stays visible/removable there regardless of this dedup.
-  function latestAssets(){
+  //
+  // Memoized on assetsVersion: this is the base every other aggregate view
+  // is built from, and it was being recomputed several times per render (a
+  // single updateShellChrome() call alone ran it three times). Callers must
+  // treat the result as read-only — see sortAssetRows on why the sort
+  // helpers now copy before sorting.
+  const latestAssets = memoOnAssets(function(){
     const byKey = new Map();
     assets.forEach(a=>{
       const hostKey = a.hostName || a.fileName;
@@ -3792,7 +3878,7 @@
       if(!curDate || (newDate && newDate >= curDate)) byKey.set(key, a);
     });
     return Array.from(byKey.values());
-  }
+  });
 
   // Counts distinct checklist files ever imported for a host — the Assets
   // table's History column. Deliberately reads the raw `assets` array (every
@@ -3803,7 +3889,8 @@
   // Built as one map for the whole fleet rather than re-scanning `assets`
   // per host: buildAssetRow() runs once per row, so the old per-host scan
   // made rendering the Assets table O(hosts x imports).
-  function historyCountsByHost(){
+  // Memoized on assetsVersion — read-only for callers.
+  const historyCountsByHost = memoOnAssets(function(){
     const map = new Map();
     assets.forEach(a=>{
       const hostKey = a.hostName || a.fileName;
@@ -3812,7 +3899,7 @@
       files.add(a.sourceFile || a.fileName);
     });
     return map;
-  }
+  });
   // The Map argument is validated rather than assumed: buildAssetRow is a
   // natural fit for `hosts.map(buildAssetRow)`, which would silently hand
   // this an array index instead. Falling back keeps that correct.
@@ -3822,17 +3909,22 @@
     return files ? files.size : 0;
   }
 
-  // `latest` is optional — callers that already computed latestAssets() can
-  // pass it in to avoid a second dedup pass over the whole import set.
-  function groupAssetsByHost(latest){
+  // Memoized on assetsVersion — read-only for callers.
+  //
+  // This used to take an optional pre-computed latestAssets() array so a
+  // caller that already had one could skip a second dedup pass. That
+  // parameter is gone: latestAssets() is memoized now, so passing it in
+  // saves nothing, and a cached function that silently returns a different
+  // result depending on whether an argument was supplied is a trap.
+  const groupAssetsByHost = memoOnAssets(function(){
     const map = new Map();
-    (Array.isArray(latest) ? latest : latestAssets()).forEach(a=>{
+    latestAssets().forEach(a=>{
       const key = a.hostName || a.fileName;
       if(!map.has(key)) map.set(key, {hostKey:key, hostName:a.hostName||key, hostIp:a.hostIp, role:a.role, stigs:[]});
       map.get(key).stigs.push(a);
     });
     return Array.from(map.values());
-  }
+  });
 
   // `historyCounts` is optional — pass the shared map from buildAssetRows()
   // when building a whole table so the per-host counts aren't recomputed for
@@ -3873,8 +3965,15 @@
     return r;
   }
 
+  // Sorts a COPY. filterAssetRows returns its input array unchanged when no
+  // filter is active, so sorting in place reached back through and reordered
+  // the caller's own array — harmless only as long as that array was freshly
+  // built. Now that the arrays feeding these tables are memoized, an
+  // in-place sort would reorder the cache itself. (Exactly this bug already
+  // hit the Compliance blade once.)
   function sortAssetRows(rows, state){
     const dir = state.sortDir;
+    rows = rows.slice();
     rows.sort((a,b)=>{
       switch(state.sortKey){
         case "name": return (a.host.hostName||"").localeCompare(b.host.hostName||"")*dir;
@@ -3908,7 +4007,12 @@
   // Groups the raw per-file/per-host asset entries into one row per unique
   // STIG title (falling back to filename when a STIG has no declared title),
   // aggregating rule counts across every host that STIG was applied to.
-  function buildStigGroups(){
+  //
+  // Memoized on assetsVersion — read-only for callers (sortStigRows copies
+  // before sorting). This was the single most expensive uncached view:
+  // ~16ms on a 2,550-file fleet, re-run on every updateShellChrome() just to
+  // put a count in the nav rail.
+  const buildStigGroups = memoOnAssets(function(){
     const map = new Map();
     latestAssets().forEach(a=>{
       const key = a.stigTitle || a.fileName;
@@ -3925,18 +4029,24 @@
       }
       const g = map.get(key);
       g.hostNames.add(a.hostName || a.fileName);
-      const {stats} = computeStats(a.vulns);
-      g.total += a.vulns.length;
-      g.open += stats.Open;
-      g.nr += stats.Not_Reviewed;
-      g.naf += stats.NotAFinding;
-      g.na += stats.Not_Applicable;
+      // Counted inline rather than via computeStats(), which also builds a
+      // per-severity breakdown (three more objects per asset) that nothing
+      // here reads — pure allocation churn on a large fleet.
+      const vulns = a.vulns;
+      for(let i = 0; i < vulns.length; i++){
+        const s = vulns[i].status;
+        if(s === "Open") g.open++;
+        else if(s === "Not_Reviewed") g.nr++;
+        else if(s === "NotAFinding") g.naf++;
+        else g.na++;
+      }
+      g.total += vulns.length;
     });
     return Array.from(map.values()).map(g=>{
       const compliance = compliancePct(g.open, g.nr, g.naf);
       return Object.assign(g, {hostCount: g.hostNames.size, compliance});
     });
-  }
+  });
 
   // Collapses a STIG group's open/not-reviewed counts into the three states
   // the Open column's Excel-style filter offers.
@@ -4053,8 +4163,12 @@
     }));
   });
 
+  // Sorts a copy — see sortAssetRows. Both call sites already passed a
+  // .slice(), but doing it here means a future caller can't reintroduce the
+  // cache-corruption bug by forgetting to.
   function sortComplianceRows(rows, state, keyField){
     const dir = state.sortDir;
+    rows = rows.slice();
     rows.sort((a,b)=>{
       switch(state.sortKey){
         case "controls": return ((a.controlCount||0)-(b.controlCount||0))*dir;
@@ -4106,8 +4220,12 @@
     return r;
   }
 
+  // Sorts a copy — see sortAssetRows. buildStigGroups() is memoized, and
+  // filterStigRows passes its input straight through when nothing is
+  // filtered, so an in-place sort here would reorder that cache.
   function sortStigRows(rows, state){
     const dir = state.sortDir;
+    rows = rows.slice();
     rows.sort((a,b)=>{
       switch(state.sortKey){
         case "title": return (a.stigTitle||"").localeCompare(b.stigTitle||"")*dir;
@@ -4139,22 +4257,24 @@
   // (it gets discarded the moment the user switches tabs, which re-renders
   // the blade from scratch anyway via refreshBlade).
   function renderDashboard(blade, bladeIndex){
-    // One dedup pass shared by both the findings roll-up and the host
-    // grouping — groupAssetsByHost() would otherwise redo latestAssets().
+    // Both of these are memoized on assetsVersion, so calling them here
+    // costs nothing beyond the first render after an import.
     const latest = latestAssets();
     const allVulns = [];
     latest.forEach(a => a.vulns.forEach(v => allVulns.push(v)));
-    const hosts = groupAssetsByHost(latest);
+    const hosts = groupAssetsByHost();
     const rows = buildAssetRows(hosts);
     lastDashboardRows = rows;
     lastDashboardBladeIndex = bladeIndex;
     const activeTab = blade.state.dashboardTab || "assets";
 
     const tabHtml = activeTab === "findings" ? (()=>{
-      const {stats} = computeStats(allVulns);
+      // One pass, shared with complianceBarsHtml — see its `precomputed` arg.
+      const computed = computeStats(allVulns);
+      const stats = computed.stats;
       return `
         <div class="compliance-split-row">
-          ${complianceBarsHtml(allVulns)}
+          ${complianceBarsHtml(allVulns, computed)}
           ${dashboardTilesHtml(bladeIndex, stats)}
         </div>
         <div class="donut-row" style="margin-top:16px;">
@@ -4241,10 +4361,12 @@
     const scanInfo = lastScannedInfo(host);
 
     const vulns = [];
+    const hostAcrBand = acrBand(acrInfo.value);
     host.stigs.forEach(a=>{
+      const sourceLabel = a.stigTitle || a.fileName;
       a.vulns.forEach(v=> vulns.push(Object.assign({}, v, {
-        _sourceLabel: a.stigTitle || a.fileName, _sourceAssetId: a.id,
-        _criticality: findingCriticality(acrInfo.value, v.severity), _acrBand: acrBand(acrInfo.value)
+        _sourceLabel: sourceLabel, _sourceAssetId: a.id,
+        _criticality: findingCriticality(acrInfo.value, v.severity), _acrBand: hostAcrBand
       })));
     });
 
@@ -4478,9 +4600,11 @@
       const hostKey = a.hostName || a.fileName;
       const hostRec = hostsMap.get(hostKey);
       const acrVal = hostRec ? getACR(hostKey, hostRec).value : 5;
+      const sourceLabel = a.hostName || a.fileName;
+      const band = acrBand(acrVal);
       a.vulns.forEach(v=> vulns.push(Object.assign({}, v, {
-        _sourceLabel: a.hostName || a.fileName, _sourceAssetId: a.id,
-        _criticality: findingCriticality(acrVal, v.severity), _acrBand: acrBand(acrVal)
+        _sourceLabel: sourceLabel, _sourceAssetId: a.id,
+        _criticality: findingCriticality(acrVal, v.severity), _acrBand: band
       })));
     });
     const filtered = filterVulns(vulns, blade.state);
@@ -4563,7 +4687,11 @@
     // or filters the user has since applied) rather than every finding in
     // the dataset — otherwise they never change no matter what was clicked.
     const isFiltered = filtered.length !== vulns.length;
-    const {stats} = computeStats(filtered);
+    // One pass, shared with complianceBarsHtml below — it needs the same
+    // numbers, and recomputing them there walked every finding a second time
+    // on every sort click, filter change and search keystroke.
+    const computed = computeStats(filtered);
+    const stats = computed.stats;
     const grouped = !!blade.state.grouped;
     // Export/row-detail lookups key off blade._lastVulns; findingsTableHtml
     // normally sets this as a side effect, but it's skipped in grouped mode
@@ -4572,7 +4700,7 @@
     return `
       <div class="blade-meta"><span>${isFiltered ? `Showing <b>${filtered.length}</b> of <b>${vulns.length}</b> total rules` : `Total rules: <b>${vulns.length}</b>`}</span></div>
       <div class="compliance-split-row">
-        ${complianceBarsHtml(filtered)}
+        ${complianceBarsHtml(filtered, computed)}
         <div class="tiles-stack">
           <div class="tile open"><div class="n">${stats.Open}</div><div class="lbl">Open</div></div>
           <div class="tile nr"><div class="n">${stats.Not_Reviewed}</div><div class="lbl">Not Reviewed</div></div>
@@ -4695,8 +4823,11 @@
       ${affectedHtml}`;
   }
 
+  // Sorts a copy — see sortAssetRows. The call site passes assets.slice(),
+  // but this must not depend on remembering to.
   function sortImportRows(rows, state){
     const dir = state.sortDir;
+    rows = rows.slice();
     rows.sort((a,b)=>{
       switch(state.sortKey){
         case "host": return (a.hostName||"").localeCompare(b.hostName||"")*dir;
@@ -5351,19 +5482,53 @@
     }
   });
 
+  // Search re-render is debounced.
+  //
+  // Filtering has to substring-match several fields of every finding, which
+  // on a large fleet (~138k findings from 2,550 files) costs ~70ms — and it
+  // ran synchronously on every keystroke, so typing an eight-letter hostname
+  // queued over half a second of blocking work and the field visibly lagged
+  // behind the keyboard. The filter itself can't be made much cheaper
+  // (precomputing per-finding search text was measured and cost ~110MB of
+  // heap, which was worse), but it doesn't need to run per keypress: one
+  // render once typing pauses is what the user actually sees.
+  //
+  // The delay is short enough to feel immediate and is skipped entirely when
+  // the box is cleared, so erasing a search snaps back instantly.
+  const SEARCH_DEBOUNCE_MS = 160;
+  let searchDebounceTimer = null;
+  let searchDebounceBladeId = null;
+  function applySearch(bladeId, value){
+    const blade = bladeStack.find(b=>b.id===bladeId);
+    if(!blade) return;
+    blade.state.search = value;
+    blade.state.page = 1;
+    refreshBlade(blade.id);
+    // refreshBlade replaces the blade's innerHTML, so the input the user is
+    // typing into is destroyed and rebuilt — restore focus and put the caret
+    // back at the end, otherwise typing stops after the first character.
+    const fresh = document.querySelector(`[data-blade-id="${blade.id}"] [data-action="search"]`);
+    if(fresh){ fresh.focus(); fresh.selectionStart = fresh.selectionEnd = fresh.value.length; }
+  }
   bladeScroll.addEventListener("input", e=>{
     const el = e.target.closest('[data-action="search"]');
     if(!el) return;
-    const blade = bladeStack.find(b=>b.id===el.dataset.bladeId);
-    if(!blade) return;
-    blade.state.search = el.value;
-    blade.state.page = 1;
-    refreshBlade(blade.id);
-    const fresh = document.querySelector(`[data-blade-id="${blade.id}"] [data-action="search"]`);
-    if(fresh){ fresh.focus(); fresh.selectionStart = fresh.selectionEnd = fresh.value.length; }
+    const bladeId = el.dataset.bladeId;
+    const value = el.value;
+    clearTimeout(searchDebounceTimer);
+    // A pending keystroke for a different blade must not be applied to this
+    // one (or to a blade that has since been closed).
+    if(searchDebounceBladeId && searchDebounceBladeId !== bladeId) searchDebounceBladeId = null;
+    if(value === ""){ searchDebounceBladeId = null; applySearch(bladeId, value); return; }
+    searchDebounceBladeId = bladeId;
+    searchDebounceTimer = setTimeout(()=>{
+      searchDebounceBladeId = null;
+      applySearch(bladeId, value);
+    }, SEARCH_DEBOUNCE_MS);
   });
 
   $("#railVersionLabel").textContent = "v" + CHANGELOG[CHANGELOG.length - 1].version;
+  purgeStalePersistedData();
   updateShellChrome();
 })();
 </script>

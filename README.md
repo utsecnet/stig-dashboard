@@ -92,4 +92,4 @@ In the diagram above, a flat average of the eight hosts' AES lands at 462. Weigh
 
 - **Findings** can be filtered/sorted and exported to CSV per view (**↓ export CSV**).
 - **Import** lists every loaded file/asset and lets you remove or add more.
-- Reloading the page clears all loaded data — nothing is persisted.
+- Nothing is written to disk. Reloading or closing the tab clears everything — this is deliberate: STIG findings are sensitive, and anything persisted to browser storage would sit there in plaintext, readable by anyone with OS-level access to the machine.
