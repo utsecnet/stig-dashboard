@@ -43,7 +43,7 @@ wks-04821, 8
 ```
 
 ### Asset Exposure Score (AES)
-`AES` is an interger from 1-1000 assigned to each asset that considers the AES and the weighted spread of STIG findings. Only Open and Not Reviewed findings count against it. AES is calculated as:
+`AES` is an interger from 1-1000 assigned to each asset that considers the `ACR` and the weighted spread of STIG findings. Only Open and Not Reviewed findings count against it. `AES` is calculated as:
 
 1. **Density** — a severity-weighted average across every applicable rule:
 
@@ -62,7 +62,7 @@ wks-04821, 8
    exposureScore = 1000 × (1 − e^(−density / 1.2))
    ```
 
-3. **AES** — exposure score scaled by the asset's ACR (1–10), so the same finding mix scores higher on a more critical asset:
+3. **AES** — exposure score scaled by the asset's `ACR` (1–10), so the same finding mix scores higher on a more critical asset:
 
    ```
    AES = min(1000, exposureScore × (0.3 + 0.07 × ACR))
@@ -79,14 +79,14 @@ Severity threshholds:
 
 ### Composite Exposure Score (CES)
 
-`CES` is our Key Performance Indicator (KPI) — a value represented over time. It is the ACR-weighted average of every asset's AES.
+`CES` is our Key Performance Indicator (KPI) — a value represented over time. It is the ACR-weighted average of every asset's `AES`.
 ```
 CES = Σ(AES × ACR) / Σ(ACR)
 ```
 
 ![CES: ACR-weighted vs. flat average](docs/ces-weighting.png)
 
-In the diagram above, a flat average of the eight hosts' AES lands at 462. Weighting by ACR pulls it up to 574, because the two worst-scoring hosts (DC-Primary, WebApp-Ext) also carry the highest ACR — closer to the actual risk picture than treating a printer's exposure the same as a domain controller's.
+In the diagram above, an average of the eight hosts' AES lands at 462, but does not consider host weight (`ACR`). Weighting by `ACR` pulls it up to 574, because the two worst-scoring hosts (DC-Primary, WebApp-Ext) also carry the highest `ACR` — closer to the actual risk picture than treating a printer's exposure the same as a domain controller's.
 
 ## Other features
 
