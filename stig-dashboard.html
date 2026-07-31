@@ -1609,7 +1609,7 @@
     {version:"2026.1", date:"July 22, 2026", notes:["Initial release"]},
     {version:"2026.1.01", date:"July 25, 2026", features:["Added CKL/CKLB file import indicator", "Added Vuln ID column to Findings tables", "Widened Findings blade for readability", "Added Last Scanned column to Assets table", "Asset Detail now shows last scanned date", "Added History column (checklist count) to Assets table", "Added AES Over Time chart to Asset Detail", "Tightened Asset Detail layout for space efficiency", "Added CES Over Time chart to top of Dashboard", "Combined compliance bars and tiles on Findings dashboard", "Made STIG ID column optional; reordered Findings columns", "Vuln ID column now hidden by default but still searchable", "Combined compliance bars and tiles on Findings blade", "Added Group/Ungroup button to Findings blade", "Renamed Source column to Host on Findings blade", "Added Affected Assets list to finding detail (grouped view)"], fixes:["Removed dead filter-chip code", "Cut redundant ACR recalculation on asset views", "Change log now lists newest release first", "Re-scanned STIGs no longer double-count in totals", "AES no longer saturates and ignores compliance changes", "AES vs Finding Count now counts only open/not-reviewed findings", "Escaped finding row IDs to block HTML injection", "Neutralized spreadsheet formula injection in CSV exports", "Unreadable files no longer stall the import loader", "Import errors now report once, not per file", "Restored blinking caret on awaiting-file prompt", "Sped up rendering for large asset fleets"]},
     {version:"2026.1.02", date:"July 27, 2026", features:["Added Control Number column to Findings tables", "Added Compliance blade summarizing RMF control families", "Compliance blade rows expand in place to show controls", "Compliance families shown as colored stat-panel grid"], fixes:["Trend chart dates angle instead of overlapping", "Changelog dates no longer drift with page load", "AES/CES history no longer splits one day into many", "Findings search is clearer, now finds Control Number", "% Compliant no longer counts Not Applicable rules"]},
-    {version:"2026.1.03", date:"July 29, 2026", features:["Drop a folder to import every checklist inside it", "Added Choose folder button to the import screen", "Added CSV export to the Assets blade", "Added CSV export to the STIGs blade"], fixes:["Removed duplicate status tiles from Compliance blade", "Compliance summary no longer touches the panel below", "Large imports use far less memory", "Faster CKL import; attributes read in one pass", "Files import in batches, keeping the page responsive", "Findings and Compliance blades render much faster", "Hostile checklist attribute names can't pollute parsing", "Search boxes all read plain \"Search...\" now", "Group setting persists across Compliance drill-ins", "Expanded controls now follow the family table's sort", "Control numbers sort numerically, not 20 before 3", "AES now reacts sooner to partial compliance", "CAT I findings weigh more heavily in AES", "AES no longer varies with a host's N/A rule count", "CES now weights each asset's AES by its ACR", "Re-uploading the same CKL/CKLB no longer duplicates it", "Confirmed no loaded data is ever written to disk", "Startup now purges any previously saved local data", "Nav counts and dashboard no longer recompute every render", "CES Over Time chart is computed once, not per render", "Sorting by Control Number is over twice as fast", "Compliance totals now tallied once per render, not twice", "Search waits for you to stop typing before filtering", "Table sorts can no longer corrupt cached view data", "Numeric zero no longer renders blank in table cells", "ACR override CSV imports invalidate caches once, not per row", "Capped internal caches fed by untrusted checklist files"]}
+    {version:"2026.1.03", date:"July 29, 2026", features:["Drop a folder to import every checklist inside it", "Added Choose folder button to the import screen", "Added CSV export to the Assets blade", "Added CSV export to the STIGs blade"], fixes:["Removed duplicate status tiles from Compliance blade", "Compliance summary no longer touches the panel below", "Large imports use far less memory", "Faster CKL import; attributes read in one pass", "Files import in batches, keeping the page responsive", "Findings and Compliance blades render much faster", "Hostile checklist attribute names can't pollute parsing", "Search boxes all read plain \"Search...\" now", "Group setting persists across Compliance drill-ins", "Expanded controls now follow the family table's sort", "Control numbers sort numerically, not 20 before 3", "AES now reacts sooner to partial compliance", "CAT I findings weigh more heavily in AES", "AES no longer varies with a host's N/A rule count", "CES now weights each asset's AES by its ACR", "Re-uploading the same CKL/CKLB no longer duplicates it", "Confirmed no loaded data is ever written to disk", "Startup now purges any previously saved local data", "Nav counts and dashboard no longer recompute every render", "CES Over Time chart is computed once, not per render", "Sorting by Control Number is over twice as fast", "Compliance totals now tallied once per render, not twice", "Search waits for you to stop typing before filtering", "Table sorts can no longer corrupt cached view data", "Numeric zero no longer renders blank in table cells", "ACR override CSV imports invalidate caches once, not per row", "Capped internal caches fed by untrusted checklist files", "Criticality matrix and summary now count Not Reviewed", "Criticality tiles now open exactly the findings they count", "Grouped findings honor the column picker", "Grouped rows flag when they span several Vuln IDs or CCIs"]}
   ];
 
   let assets = []; // {id, fileName, hostName, hostIp, stigTitle, stigVersion, releaseInfo, vulns:[...]}
@@ -2978,12 +2978,30 @@
   // Requirement 4 — ACR x CAT matrix + criticality summary panel
   // ==================================================================
 
+  // The statuses that represent unresolved risk, and therefore the ones the
+  // criticality matrix and its summary count.
+  //
+  // Not Reviewed counts alongside Open on purpose: an unreviewed rule is a
+  // control whose state is unknown, not one that passed. Excluding it made a
+  // host with a large unreviewed backlog look identical to a fully assessed,
+  // fully compliant one — understating exactly the risk this matrix exists to
+  // surface. Not a Finding and Not Applicable are genuinely resolved and
+  // stay out.
+  //
+  // UNRESOLVED_PRESET is the same set as a drill-through parameter, so a
+  // cell's count and the findings it opens can never disagree.
+  const UNRESOLVED_STATUSES = ["Open", "Not_Reviewed"];
+  const UNRESOLVED_PRESET = UNRESOLVED_STATUSES.join(",");
+  function isUnresolved(status){
+    return status === "Open" || status === "Not_Reviewed";
+  }
+
   function computeMatrixCounts(hosts){
     const counts = {"9-10":{high:0,medium:0,low:0}, "7-8":{high:0,medium:0,low:0}, "4-6":{high:0,medium:0,low:0}, "1-3":{high:0,medium:0,low:0}};
     hosts.forEach(h=>{
       const band = acrBand(getACR(h.hostKey, h).value);
       h.stigs.forEach(a=>a.vulns.forEach(v=>{
-        if(v.status !== "Open") return;
+        if(!isUnresolved(v.status)) return;
         counts[band][v.severity] = (counts[band][v.severity]||0) + 1;
       }));
     });
@@ -2996,15 +3014,15 @@
     const words = {L:"Low", M:"Medium", H:"High", C:"Critical"};
     const counts = computeMatrixCounts(hosts);
     return `<div class="matrix-block">
-      <div class="head"><h3>ACR × CAT Criticality Matrix</h3><span class="overall tooltip" data-tip="Rows = Asset Criticality Rating band. Columns = STIG finding severity category. Each cell shows the count of Open findings in that combination, colored by the resulting criticality. Click a cell to view matching findings.">how is this used?</span></div>
+      <div class="head"><h3>ACR × CAT Criticality Matrix</h3><span class="overall tooltip" data-tip="Rows = Asset Criticality Rating band. Columns = STIG finding severity category. Each cell shows the count of unresolved findings — Open plus Not Reviewed — in that combination, colored by the resulting criticality. Not Reviewed counts because an unreviewed rule is unknown risk, not a pass. Click a cell to view matching findings.">how is this used?</span></div>
       <table class="matrix-table">
         <thead><tr><th>ACR</th>${sevCols.map(c=>`<th>${c[1]}</th>`).join("")}</tr></thead>
         <tbody>
           ${rows.map(r=>`<tr><td class="acr-row-label">${r[1]}</td>${sevCols.map(c=>{
             const letter = CRIT_MATRIX[r[0]][c[0]];
             const count = counts[r[0]][c[0]] || 0;
-            const tip = `${count} Open ${c[1]} finding${count===1?"":"s"} on assets with ACR ${r[1]} — ${words[letter]} criticality.`;
-            return `<td class="matrix-cell crit-${letter.toLowerCase()} tooltip" data-tip="${esc(tip)}" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="${words[letter]} Criticality — ACR ${r[1]} / ${c[1]}" data-preset-crit="${letter}" data-preset-acrband="${r[0]}" data-preset-sev="${c[0]}" data-preset-status="Open"><div class="matrix-count">${count}</div></td>`;
+            const tip = `${count} unresolved ${c[1]} finding${count===1?"":"s"} (Open or Not Reviewed) on assets with ACR ${r[1]} — ${words[letter]} criticality.`;
+            return `<td class="matrix-cell crit-${letter.toLowerCase()} tooltip" data-tip="${esc(tip)}" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="${words[letter]} Criticality — ACR ${r[1]} / ${c[1]}" data-preset-crit="${letter}" data-preset-acrband="${r[0]}" data-preset-sev="${c[0]}" data-preset-status="${UNRESOLVED_PRESET}"><div class="matrix-count">${count}</div></td>`;
           }).join("")}</tr>`).join("")}
         </tbody>
       </table>
@@ -3015,20 +3033,24 @@
     </div>`;
   }
 
+  // Rolls the matrix up to one number per criticality band. Counts the same
+  // unresolved statuses the matrix does (see UNRESOLVED_STATUSES) so the
+  // tiles always sum to the matrix above them.
   function critSummaryHtml(bladeIndex, hosts){
     const counts = {L:0,M:0,H:0,C:0};
     hosts.forEach(h=>{
       const acrVal = getACR(h.hostKey, h).value;
       h.stigs.forEach(a=>a.vulns.forEach(v=>{
-        if(v.status !== "Open") return;
+        if(!isUnresolved(v.status)) return;
         counts[findingCriticality(acrVal, v.severity)]++;
       }));
     });
     const words = {C:"Critical", H:"High", M:"Medium", L:"Low"};
+    const tip = "Unresolved findings — Open plus Not Reviewed — grouped by ACR × CAT criticality. These tiles are the matrix beside them, totalled per criticality band.";
     return `<div class="crit-summary-block">
-      <div class="head"><h3>Summary</h3></div>
+      <div class="head"><h3>Summary</h3><span class="overall tooltip" data-tip="${esc(tip)}">what is this?</span></div>
       <div class="crit-tiles">
-        ${["C","H","M","L"].map(l=>`<div class="crit-tile crit-${l.toLowerCase()}" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="${words[l]} Criticality Findings" data-preset-crit="${l}">
+        ${["C","H","M","L"].map(l=>`<div class="crit-tile crit-${l.toLowerCase()}" data-action="drill" data-blade-index="${bladeIndex}" data-type="findings" data-title="${words[l]} Criticality Findings" data-preset-crit="${l}" data-preset-status="${UNRESOLVED_PRESET}">
           <div class="n">${counts[l]}</div><div class="lbl">${words[l]}</div>
         </div>`).join("")}
       </div>
@@ -3668,21 +3690,75 @@
   // that rule title. `repId` keeps that first row's id so a grouped row can
   // still open the finding detail pane on click, same as an ungrouped row —
   // it just shows one representative host's copy of the rule.
+  // Groups are keyed on rule title + status. Everything else is collected as
+  // a SET of the distinct values seen in the group, not just the first one.
+  //
+  // That matters: measured against real checklists, ~6% of groups span more
+  // than one Vuln ID and ~6% span more than one CCI set, because the same
+  // rule title is reissued under a new V-number across STIG releases (e.g.
+  // "RHEL 9 must display the Standard Mandatory DOD Notice..." appears as
+  // both V-258012 and V-270174). Showing whichever value happened to be
+  // first would silently mislabel one group in sixteen.
   function groupFindingsByTitleStatus(vulns){
     const map = new Map();
     vulns.forEach(v=>{
       const key = (v.ruleTitle||"") + "" + v.status;
       let g = map.get(key);
       if(!g){
-        g = {ruleTitle: v.ruleTitle, status: v.status, severity: v.severity, vulnNum: v.vulnNum, ruleVer: v.ruleVer, repId: v.id, count: 0};
+        g = {
+          ruleTitle: v.ruleTitle, status: v.status, severity: v.severity,
+          vulnNum: v.vulnNum, ruleVer: v.ruleVer, repId: v.id, count: 0,
+          // Distinct values across the group, for the multi-valued columns.
+          vulnNums: new Set(), ruleVers: new Set(), ccis: new Set(), controls: new Set()
+        };
         map.set(key, g);
       }
+      g.vulnNums.add(v.vulnNum || "");
+      g.ruleVers.add(v.ruleVer || "");
+      g.ccis.add(v.cci || "");
+      g.controls.add(controlNumbersForCciField(v.cci));
       g.count++;
     });
     return Array.from(map.values());
   }
 
-  const GROUPED_SORT_KEYS = ["vulnId","title","sev","status","count"];
+  // Renders one grouped cell from a Set of distinct values.
+  //
+  // One value -> show it. Several -> say how many, and list them in the
+  // tooltip, rather than picking one and presenting it as the group's value.
+  // Blank entries are dropped first, so a group where only some findings
+  // carry a CCI still reads as that single CCI rather than "2 values".
+  function groupedMultiCellHtml(valueSet){
+    const values = Array.from(valueSet).filter(x => x !== "" && x != null);
+    if(!values.length) return `<td class="src">—</td>`;
+    if(values.length === 1) return `<td class="src">${esc(values[0])}</td>`;
+    const sorted = values.slice().sort((a,b)=>a.localeCompare(b, undefined, {numeric:true}));
+    const tip = `This group spans ${sorted.length} different values: ${sorted.join(" · ")}`;
+    return `<td class="src"><span class="tooltip" data-tip="${esc(tip)}">${sorted.length} values</span></td>`;
+  }
+
+  // Which Findings columns mean anything once rows are grouped by rule title
+  // + status. Deliberately excludes Source/host, STIG and Criticality: a
+  // group deliberately spans many hosts (that is what Count measures), and
+  // criticality depends on each host's ACR, so all three would be "N values"
+  // on essentially every row and tell the user nothing.
+  const GROUPABLE_FINDING_COLS = new Set(["vulnId","title","sev","status","id","cci","control"]);
+
+  // Sort key for a multi-valued grouped column: the alphabetically-first
+  // distinct value, so a group sorts by something it actually contains.
+  // (Sorting on the rendered "N values" text would bunch every multi-valued
+  // group together regardless of what the values are.)
+  function groupedSortValue(valueSet){
+    if(!valueSet) return "";
+    let best = "";
+    valueSet.forEach(x=>{
+      if(x === "" || x == null) return;
+      if(best === "" || x.localeCompare(best, undefined, {numeric:true}) < 0) best = x;
+    });
+    return best;
+  }
+
+  const GROUPED_SORT_KEYS = ["vulnId","title","sev","status","count","id","cci","control"];
   function sortGroupedRows(rows, state){
     const sevRank = {high:0, medium:1, low:2};
     const statRank = {Open:0, Not_Reviewed:1, NotAFinding:2, Not_Applicable:3};
@@ -3693,15 +3769,30 @@
       let r = 0;
       if(key==="sev") r = sevRank[a.severity]-sevRank[b.severity];
       else if(key==="status") r = statRank[a.status]-statRank[b.status];
-      else if(key==="vulnId") r = (a.vulnNum||"").localeCompare(b.vulnNum||"", undefined, {numeric:true});
+      else if(key==="vulnId") r = groupedSortValue(a.vulnNums).localeCompare(groupedSortValue(b.vulnNums), undefined, {numeric:true});
       else if(key==="title") r = (a.ruleTitle||"").localeCompare(b.ruleTitle||"");
+      else if(key==="id") r = groupedSortValue(a.ruleVers).localeCompare(groupedSortValue(b.ruleVers), undefined, {numeric:true});
+      else if(key==="cci") r = groupedSortValue(a.ccis).localeCompare(groupedSortValue(b.ccis), undefined, {numeric:true});
+      else if(key==="control") r = groupedSortValue(a.controls).localeCompare(groupedSortValue(b.controls), undefined, {numeric:true});
       else if(key==="count") r = a.count-b.count;
       return r*dir;
     });
   }
 
   function groupedFindingsTableHtml(blade, rows){
-    const cols = [["title","Rule Title"],["sev","Severity"],["status","Status"],["count","Count"]];
+    // Grouped mode honors the same column picker as the ungrouped table,
+    // narrowed to the columns that still mean something once rows are
+    // grouped (GROUPABLE_FINDING_COLS). Previously this was a hardcoded
+    // four-column table, so turning on Vuln ID / CCI / Control Number had no
+    // effect the moment you hit Group. Rule Title is pinned on: it is half
+    // the group key, so a group with it hidden would be unidentifiable.
+    const vis = getVisibleCols("findings", FINDING_COLS);
+    const cols = FINDING_COLS
+      .filter(d => GROUPABLE_FINDING_COLS.has(d.key) && (d.key === "title" || vis.has(d.key)))
+      .map(d => [d.key, d.label]);
+    // Count is grouped-mode-only — it has no ungrouped equivalent and so
+    // isn't in FINDING_COLS or the picker. Always last.
+    cols.push(["count","Count"]);
     const header = cols.map(([key,label])=>{
       const filterKey = FINDING_FILTER_OPTIONS[key] ? key : null;
       return thCellHtml(blade, key, label, {filterKey, filterOptions: filterKey ? FINDING_FILTER_OPTIONS[filterKey] : null});
@@ -3726,12 +3817,21 @@
     const bodyRows = total===0 ? `<tr class="empty-row"><td colspan="${cols.length}">no findings match the current filters</td></tr>` :
       pageRows.map(r=>{
         const active = activeId === r.repId;
-        return `<tr data-blade-id="${blade.id}" data-action="drill-finding" data-vuln-id="${esc(r.repId)}" class="${active?'active-row':''}">
-        <td class="title">${esc(r.ruleTitle)}</td>
-        <td class="sev"><span class="sev-tag ${SEV_CLASS[r.severity]||"c2"}">${SEV_LABEL[r.severity]||r.severity}</span></td>
-        <td><span class="status-pill ${r.status}">${STATUS_LABEL[r.status]||r.status}</span></td>
-        <td>${r.count}</td>
-      </tr>`;
+        const cells = cols.map(([key])=>{
+          switch(key){
+            case "title": return `<td class="title">${esc(r.ruleTitle)}</td>`;
+            case "sev": return `<td class="sev"><span class="sev-tag ${SEV_CLASS[r.severity]||"c2"}">${SEV_LABEL[r.severity]||r.severity}</span></td>`;
+            case "status": return `<td><span class="status-pill ${r.status}">${STATUS_LABEL[r.status]||r.status}</span></td>`;
+            case "count": return `<td>${r.count}</td>`;
+            // Multi-valued across the group — see groupedMultiCellHtml.
+            case "vulnId": return groupedMultiCellHtml(r.vulnNums);
+            case "id": return groupedMultiCellHtml(r.ruleVers);
+            case "cci": return groupedMultiCellHtml(r.ccis);
+            case "control": return groupedMultiCellHtml(r.controls);
+            default: return `<td></td>`;
+          }
+        }).join("");
+        return `<tr data-blade-id="${blade.id}" data-action="drill-finding" data-vuln-id="${esc(r.repId)}" class="${active?'active-row':''}">${cells}</tr>`;
       }).join("");
     return `
       <div class="tablewrap"><table><thead><tr>${header}</tr></thead><tbody>${bodyRows}</tbody></table></div>
@@ -3818,7 +3918,10 @@
       search: "",
       sortKey, sortDir: 1,
       colFilters: {
-        status: params.presetStatus ? new Set([params.presetStatus]) : new Set(),
+        // Accepts a comma-separated list ("Open,Not_Reviewed") as well as a
+        // single status, so a tile whose count covers more than one status
+        // can drill through to exactly the findings it counted.
+        status: params.presetStatus ? new Set(String(params.presetStatus).split(",").map(s=>s.trim()).filter(Boolean)) : new Set(),
         sev: params.presetSev ? new Set([params.presetSev]) : new Set(),
         crit: params.presetCrit ? new Set([params.presetCrit]) : new Set(),
         source: new Set(),

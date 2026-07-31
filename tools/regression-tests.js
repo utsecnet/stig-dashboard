@@ -169,8 +169,13 @@ section("Findings blade — Group toggle, filters, pagination");
   check(filterCount >= 2, "grouped Findings table STILL has column filter dropdowns (sev/status): found " + filterCount);
   check(html.includes('class="pagination-bar"'), "grouped Findings table STILL has a pagination bar");
   check(html.includes(">Count<"), "grouped table shows a Count column");
-  check(!html.includes('data-key="source"'), "grouped table has no Host column (replaced by Count)");
-  check(!html.includes('data-key="vulnId"'), "grouped table has no Vuln ID column (redundant with Rule Title, 1:1)");
+  check(!html.includes('data-key="source"'), "grouped table has no Host column (a group spans hosts — that's what Count measures)");
+  // Vuln ID is default-OFF in the column picker, so it is absent here for
+  // that reason — NOT because grouped mode refuses to render it. The
+  // "grouped mode honors the column picker" section below covers turning it
+  // on. (This assertion previously read "grouped table has no Vuln ID
+  // column", which encoded the opposite requirement.)
+  check(!html.includes('data-key="vulnId"'), "grouped table hides Vuln ID while it is switched off in the column picker");
   check(/<span class="th-label"[^>]*data-key="title"[^>]*>Rule Title/.test(html), "grouped table's first column is Rule Title");
   // grouped rows must ALSO still be clickable into the finding detail pane
   // (regression: this broke when grouping was first added — rows had no
@@ -2239,6 +2244,195 @@ section("Search input — debounce");
   check(b._lastVulns.length === decoratedFindings().length,
     \`clearing the search restores the full set (\${b._lastVulns.length} == \${decoratedFindings().length})\`);
   bladeStack.splice(bladeStack.indexOf(b), 1);
+}
+
+// ======================================================================
+// Grouped Findings — the column picker applies in grouped mode too
+//
+// The grouped table used to be a hardcoded four-column layout (Rule Title /
+// Severity / Status / Count), so switching Vuln ID, CCI or Control Number on
+// in the picker did nothing the moment you hit Group. It now renders the
+// same picked columns, narrowed to the ones that still mean something once
+// rows are grouped.
+// ======================================================================
+section("Grouped Findings — column picker applies when grouped");
+{
+  const vis = getVisibleCols("findings", FINDING_COLS);
+  const saved = new Set(vis);
+
+  const b = newBlade("findings", "Findings", {});
+  b.state.grouped = true;
+
+  ["vulnId","cci","control"].forEach(k=> vis.delete(k));
+  let html = renderFindingsList(b, 0);
+  check(!html.includes('data-key="vulnId"'), "Vuln ID stays hidden when switched off");
+  check(!html.includes('data-key="cci"'), "CCI stays hidden when switched off");
+  check(!html.includes('data-key="control"'), "Control Number stays hidden when switched off");
+
+  ["vulnId","cci","control"].forEach(k=> vis.add(k));
+  html = renderFindingsList(b, 0);
+  check(html.includes('data-key="vulnId"'), "Vuln ID appears in the grouped table once switched on");
+  check(html.includes('data-key="cci"'), "CCI appears in the grouped table once switched on");
+  check(html.includes('data-key="control"'), "Control Number appears in the grouped table once switched on");
+  check(html.includes(">Count<"), "Count is still present alongside the newly shown columns");
+  check(/<span class="th-label"[^>]*data-key="title"[^>]*>Rule Title/.test(html),
+    "Rule Title is still the leading column");
+
+  // Header and body must stay in step — a mismatch silently shifts every
+  // cell one column left or right.
+  const headerCells = (html.match(/<th\\b/g) || []).length;
+  const firstRow = (html.match(/<tr data-blade-id="[^"]*" data-action="drill-finding"[\\s\\S]*?<\\/tr>/) || [""])[0];
+  const bodyCells = (firstRow.match(/<td\\b/g) || []).length;
+  check(headerCells === bodyCells,
+    \`grouped header and body have the same number of columns (\${headerCells} th vs \${bodyCells} td)\`);
+
+  // Rule Title is half the group key, so it must survive being switched off.
+  vis.delete("title");
+  const noTitle = renderFindingsList(b, 0);
+  check(/data-key="title"/.test(noTitle),
+    "Rule Title stays pinned on even if switched off — a group with no title is unidentifiable");
+  vis.add("title");
+
+  // Columns that inherently vary across a group are excluded by design.
+  ["source","stig","crit"].forEach(k=> vis.add(k));
+  const withVarying = renderFindingsList(b, 0);
+  check(!withVarying.includes('data-key="source"'), "Host is excluded from grouped mode even when switched on (a group spans hosts)");
+  check(!withVarying.includes('data-key="crit"'), "Criticality is excluded from grouped mode (it depends on each host's ACR)");
+  check(!withVarying.includes('data-key="stig"'), "STIG is excluded from grouped mode (a group spans STIGs)");
+
+  // Rows must still drill into the finding detail pane with all this on.
+  check(/<tr data-blade-id="[^"]*" data-action="drill-finding" data-vuln-id="[^"]+"/.test(withVarying),
+    "grouped rows are still clickable with the extra columns shown");
+
+  colPrefs.findings = saved;
+}
+
+// ======================================================================
+// Grouped Findings — multi-valued cells are honest
+//
+// A group is keyed on rule title + status, and real checklists reissue the
+// same rule title under a new V-number across STIG releases. Measured on the
+// sample data, ~6% of groups span more than one Vuln ID and ~6% more than
+// one CCI set. Rendering whichever value happened to be first would
+// mislabel those groups, so cells show the shared value when there is one
+// and say how many there are when there isn't.
+// ======================================================================
+section("Grouped Findings — multi-valued cells");
+{
+  const groups = groupFindingsByTitleStatus(allVulns);
+  check(groups.every(g=> g.vulnNums instanceof Set && g.ccis instanceof Set && g.controls instanceof Set && g.ruleVers instanceof Set),
+    "every group collects the distinct values of its multi-valued fields, not just the first");
+
+  // Single value -> rendered bare, no "N values" wrapper.
+  const single = groups.find(g=> g.vulnNums.size === 1 && Array.from(g.vulnNums)[0] !== "");
+  check(!!single, "found a single-Vuln-ID group to check against");
+  const singleHtml = groupedMultiCellHtml(single.vulnNums);
+  check(singleHtml.includes(Array.from(single.vulnNums)[0]), "a group with one Vuln ID shows that Vuln ID");
+  check(!/\\d+ values/.test(singleHtml), "a single-valued cell is not dressed up as \\"N values\\"");
+
+  // Several values -> count plus a tooltip listing them, never a bare pick.
+  const multi = groups.find(g=> g.vulnNums.size > 1);
+  check(!!multi, "the sample data contains groups spanning several Vuln IDs (this is what the feature is for)");
+  if(multi){
+    const multiHtml = groupedMultiCellHtml(multi.vulnNums);
+    check(/\\d+ values/.test(multiHtml), "a multi-valued cell reports how many distinct values the group covers");
+    check(multiHtml.includes("data-tip"), "a multi-valued cell lists the actual values in its tooltip");
+    Array.from(multi.vulnNums).forEach(val=>{
+      if(val) check(multiHtml.includes(esc(val)), "the tooltip names every value in the group, including " + val);
+    });
+    check(!new RegExp('^<td[^>]*>' + Array.from(multi.vulnNums)[0] + '</td>$').test(multiHtml),
+      "a multi-valued cell never presents one arbitrary value as if it were the group's value");
+  }
+
+  // Edge cases.
+  check(groupedMultiCellHtml(new Set()).includes("—"), "an empty set renders an em dash");
+  check(groupedMultiCellHtml(new Set([""])).includes("—"), "a set of only blanks renders an em dash");
+  check(groupedMultiCellHtml(new Set(["", "CCI-000048"])) === '<td class="src">CCI-000048</td>',
+    "blanks are ignored, so one real value among blanks reads as that value rather than \\"2 values\\"");
+
+  // Sorting on the new keys must work and respond to direction.
+  const st = newBlade("findings", "Findings", {}).state;
+  ["vulnId","cci","control","id"].forEach(key=>{
+    const asc = sortGroupedRows(groups, Object.assign({}, st, {sortKey:key, sortDir:1})).map(g=>g.repId).join("|");
+    const desc = sortGroupedRows(groups, Object.assign({}, st, {sortKey:key, sortDir:-1})).map(g=>g.repId).join("|");
+    check(asc !== desc, "grouped rows can be sorted by " + key + " in both directions");
+  });
+  const ascVals = sortGroupedRows(groups, Object.assign({}, st, {sortKey:"vulnId", sortDir:1}))
+    .map(g=>groupedSortValue(g.vulnNums)).filter(Boolean);
+  check(ascVals.every((v,i)=> i===0 || ascVals[i-1].localeCompare(v, undefined, {numeric:true}) <= 0),
+    "sorting by Vuln ID really is ordered (multi-valued groups sort by a value they actually contain)");
+
+  // Grouping totals must still reconcile after all of this.
+  check(groups.reduce((s,g)=>s+g.count,0) === allVulns.length, "grouped counts still sum to the full finding total");
+}
+
+// ======================================================================
+// Criticality matrix + summary count Not Reviewed
+//
+// Both used to count only Open. An unreviewed rule is a control whose state
+// is unknown, not one that passed, so excluding it made a host with a large
+// unreviewed backlog look identical to a fully assessed compliant one —
+// understating exactly the risk this matrix exists to surface.
+//
+// Drill-through must agree with the numbers: a cell that counts two
+// statuses has to open both, or the table it lands on contradicts the tile
+// that was clicked.
+// ======================================================================
+section("Criticality matrix + summary — Not Reviewed counts");
+{
+  const hosts = groupAssetsByHost();
+  let openOnly = 0, unresolved = 0, resolved = 0;
+  hosts.forEach(h=> h.stigs.forEach(a=> a.vulns.forEach(v=>{
+    if(v.status === "Open") openOnly++;
+    if(v.status === "Open" || v.status === "Not_Reviewed") unresolved++;
+    if(v.status === "NotAFinding" || v.status === "Not_Applicable") resolved++;
+  })));
+  check(unresolved > openOnly, "the sample fleet has Not Reviewed findings, so this test can actually tell the two totals apart");
+
+  const counts = computeMatrixCounts(hosts);
+  let matrixTotal = 0;
+  Object.keys(counts).forEach(band=> Object.keys(counts[band]).forEach(sev=> matrixTotal += counts[band][sev]));
+  check(matrixTotal === unresolved, \`the matrix totals Open + Not Reviewed (\${matrixTotal} == \${unresolved})\`);
+  check(matrixTotal !== openOnly, "the matrix is no longer counting Open alone");
+  check(matrixTotal !== unresolved + resolved, "resolved findings (Not a Finding / N/A) are still excluded");
+
+  // The summary tiles are the same population, bucketed by criticality.
+  const summaryHtml = critSummaryHtml(0, hosts);
+  const tileNums = (summaryHtml.match(/<div class="n">(\\d+)<\\/div>/g) || []).map(s=> parseInt(s.replace(/\\D/g,""), 10));
+  check(tileNums.length === 4, "the summary renders four criticality tiles");
+  check(tileNums.reduce((a,b)=>a+b,0) === unresolved,
+    \`the summary tiles sum to the same population as the matrix (\${tileNums.reduce((a,b)=>a+b,0)} == \${unresolved})\`);
+
+  // Counts and drill-through must not disagree.
+  const matrixHtml = acrCatMatrixHtml(0, hosts);
+  check(matrixHtml.includes('data-preset-status="Open,Not_Reviewed"'),
+    "matrix cells drill through to both statuses they counted");
+  check(!/data-preset-status="Open"[^,]/.test(matrixHtml), "no matrix cell still presets Open alone");
+  check(summaryHtml.includes('data-preset-status="Open,Not_Reviewed"'),
+    "summary tiles drill through to both statuses they counted (previously they presetted no status at all, so the count and the drill disagreed)");
+
+  // A comma-separated preset must actually become two active filters.
+  const drilled = newBlade("findings", "Findings", {presetCrit:"C", presetStatus:"Open,Not_Reviewed"});
+  check(drilled.state.colFilters.status.size === 2, "a comma-separated status preset becomes two filters, not one literal string");
+  check(drilled.state.colFilters.status.has("Open") && drilled.state.colFilters.status.has("Not_Reviewed"),
+    "both statuses are present in the drilled blade's filter");
+  const singlePreset = newBlade("findings", "Findings", {presetStatus:"Open"});
+  check(singlePreset.state.colFilters.status.size === 1 && singlePreset.state.colFilters.status.has("Open"),
+    "a plain single-status preset still works unchanged");
+
+  // And the drilled table returns exactly what the tile advertised.
+  const drilledCount = filterVulns(decoratedFindings(), drilled.state).length;
+  const expectedCritical = decoratedFindings().filter(v=>
+    v._criticality === "C" && (v.status === "Open" || v.status === "Not_Reviewed")).length;
+  check(drilledCount === expectedCritical,
+    \`clicking the Critical tile opens exactly the findings it counted (\${drilledCount} == \${expectedCritical})\`);
+  check(tileNums[0] === expectedCritical,
+    \`...and that is the number actually rendered on the tile (\${tileNums[0]} == \${expectedCritical})\`);
+
+  // Wording must not still claim "Open" only.
+  check(/Open plus Not Reviewed|Open and Not Reviewed|Open or Not Reviewed/.test(matrixHtml),
+    "the matrix explains that it counts Open plus Not Reviewed");
+  check(!/count of Open findings/.test(matrixHtml), "the old \\"count of Open findings\\" wording is gone");
 }
 
 console.log(\`\\n\${passes} passed, \${failures} failed.\`);
